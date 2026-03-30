@@ -253,3 +253,99 @@ export async function saveSecretsFromEnv(
 
   return { success: true, outcomes };
 }
+
+// ---------------------------------------------------------------------------
+// Update secret
+// ---------------------------------------------------------------------------
+
+const UpdateSecretSchema = z.object({
+  secretId: z.string().min(1, "Secret ID must not be empty."),
+  key:      z.string().min(1, "Key must not be empty."),
+  value:    z.string().min(1, "Value must not be empty."),
+});
+
+export type UpdateSecretInput  = z.infer<typeof UpdateSecretSchema>;
+export type UpdateSecretResult =
+  | { success: true }
+  | { success: false; error: string };
+
+/**
+ * Updates a secret's key and/or value.
+ * Re-encrypts the value with a fresh IV on every edit.
+ * Requires MODERATOR or above.
+ */
+export async function updateSecret(
+  rawInput: UpdateSecretInput,
+): Promise<UpdateSecretResult> {
+  const session = await auth();
+  if (!session?.user) return { success: false, error: "Unauthorized. Please sign in." };
+
+  const parsed = UpdateSecretSchema.safeParse({
+    secretId: rawInput.secretId?.trim(),
+    key:      rawInput.key?.trim(),
+    value:    rawInput.value?.trim(),
+  });
+
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues.map((i) => i.message).join(" | ") };
+  }
+
+  const { secretId, key, value } = parsed.data;
+  const actor = { id: session.user.id, role: session.user.role };
+
+  if (!canUserPerformAction(actor, null, "secret", "update")) {
+    return {
+      success: false,
+      error: `Role "${session.user.role}" is not permitted to edit secrets.`,
+    };
+  }
+
+  const existing = await prisma.secret.findUnique({
+    where:  { id: secretId },
+    select: { id: true },
+  });
+  if (!existing) return { success: false, error: "Secret not found." };
+
+  const { encryptedValue, iv } = encryptValue(value);
+
+  await prisma.secret.update({
+    where: { id: secretId },
+    data:  { key, encryptedValue, iv },
+  });
+
+  return { success: true };
+}
+
+// ---------------------------------------------------------------------------
+// Delete secret
+// ---------------------------------------------------------------------------
+
+export type DeleteSecretResult =
+  | { success: true }
+  | { success: false; error: string };
+
+/**
+ * Deletes a single secret.
+ * Requires MODERATOR or above.
+ */
+export async function deleteSecret(secretId: string): Promise<DeleteSecretResult> {
+  const session = await auth();
+  if (!session?.user) return { success: false, error: "Unauthorized." };
+
+  const actor = { id: session.user.id, role: session.user.role };
+  if (!canUserPerformAction(actor, null, "secret", "delete")) {
+    return {
+      success: false,
+      error: `Role "${session.user.role}" is not permitted to delete secrets.`,
+    };
+  }
+
+  const secret = await prisma.secret.findUnique({
+    where:  { id: secretId },
+    select: { id: true },
+  });
+  if (!secret) return { success: false, error: "Secret not found." };
+
+  await prisma.secret.delete({ where: { id: secretId } });
+  return { success: true };
+}

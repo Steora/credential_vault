@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState, useTransition } from "react";
+import { useCallback, useMemo, useRef, useState, useTransition } from "react";
 import { parseEnvText, type EnvPair } from "@/lib/env-parser";
 import { saveSecretsFromEnv, type SecretImportOutcome } from "@/app/actions/secrets";
 
@@ -18,7 +18,6 @@ type ImportStatus = "idle" | "importing" | "done";
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Masks a secret value so it is never fully visible in the UI. */
 function maskValue(value: string): string {
   if (value.length === 0) return "(empty)";
   if (value.length <= 4) return "••••";
@@ -60,28 +59,49 @@ function StatusBadge({ outcome }: { outcome: SecretImportOutcome }) {
 interface EnvFileImporterProps {
   projectId: string;
   projectName?: string;
+  /** Called after a successful import (e.g. to close a parent dialog). */
+  onImportSuccess?: () => void;
 }
 
-export default function EnvFileImporter({ projectId, projectName }: EnvFileImporterProps) {
-  const [rawText, setRawText]       = useState("");
-  const [pairs, setPairs]           = useState<SelectablePair[]>([]);
-  const [outcomes, setOutcomes]     = useState<SecretImportOutcome[]>([]);
+export default function EnvFileImporter({ projectId, projectName, onImportSuccess }: EnvFileImporterProps) {
+  const [rawText,      setRawText]      = useState("");
+  const [pairs,        setPairs]        = useState<SelectablePair[]>([]);
+  const [outcomes,     setOutcomes]     = useState<SecretImportOutcome[]>([]);
   const [importStatus, setImportStatus] = useState<ImportStatus>("idle");
-  const [globalError, setGlobalError]   = useState<string | null>(null);
-  const [isPending, startTransition]    = useTransition();
+  const [globalError,  setGlobalError]  = useState<string | null>(null);
+  const [isPending,    startTransition] = useTransition();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // -------------------------------------------------------------------------
-  // Live parsing — re-runs every time the textarea changes
+  // Live parsing
   // -------------------------------------------------------------------------
   const handleTextChange = useCallback((text: string) => {
     setRawText(text);
     setOutcomes([]);
     setGlobalError(null);
     setImportStatus("idle");
-
     const { pairs: parsed } = parseEnvText(text);
     setPairs(parsed.map((p) => ({ ...p, selected: true })));
   }, []);
+
+  // -------------------------------------------------------------------------
+  // File upload — reads a .env file and populates the textarea
+  // -------------------------------------------------------------------------
+  const handleFileUpload = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const text = event.target?.result as string;
+        handleTextChange(text);
+      };
+      reader.readAsText(file);
+      e.target.value = ""; // reset so the same file can be re-selected
+    },
+    [handleTextChange],
+  );
 
   // -------------------------------------------------------------------------
   // Select / deselect helpers
@@ -96,13 +116,10 @@ export default function EnvFileImporter({ projectId, projectName }: EnvFileImpor
     setPairs((prev) => prev.map((p) => ({ ...p, selected })));
   }, []);
 
-  const selectedPairs = useMemo(
-    () => pairs.filter((p) => p.selected),
-    [pairs],
-  );
+  const selectedPairs = useMemo(() => pairs.filter((p) => p.selected), [pairs]);
 
   // -------------------------------------------------------------------------
-  // Outcome lookup — used to show per-row status after import
+  // Outcome lookup
   // -------------------------------------------------------------------------
   const outcomeMap = useMemo(
     () => new Map(outcomes.map((o) => [o.key, o])),
@@ -132,8 +149,13 @@ export default function EnvFileImporter({ projectId, projectName }: EnvFileImpor
 
       setOutcomes(result.outcomes);
       setImportStatus("done");
+
+      const savedCount = result.outcomes.filter((o) => o.status === "saved").length;
+      if (savedCount > 0) {
+        onImportSuccess?.();
+      }
     });
-  }, [selectedPairs, projectId]);
+  }, [selectedPairs, projectId, onImportSuccess]);
 
   // -------------------------------------------------------------------------
   // Reset
@@ -156,56 +178,83 @@ export default function EnvFileImporter({ projectId, projectName }: EnvFileImpor
   // Render
   // -------------------------------------------------------------------------
   return (
-    <div className="w-full max-w-3xl space-y-5 rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
+    <div className="w-full space-y-4">
 
-      {/* Header */}
-      <div>
-        <h2 className="text-lg font-semibold text-neutral-900">Import .env File</h2>
-        <p className="mt-0.5 text-sm text-neutral-500">
-          Paste your <code className="rounded bg-neutral-100 px-1 py-0.5 text-xs">.env</code>{" "}
-          contents. Each key-value pair will be encrypted and saved
-          {projectName ? <> to <span className="font-medium text-neutral-700">{projectName}</span></> : ""}.
-        </p>
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".env,.txt,text/plain"
+        className="hidden"
+        onChange={handleFileUpload}
+        aria-hidden
+      />
+
+      {/* Header row */}
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <p className="text-sm text-muted-foreground">
+            Paste contents or upload a{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">.env</code>{" "}
+            file{projectName ? <> for <span className="font-medium text-foreground">{projectName}</span></> : ""}.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isPending}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-border bg-muted/40 px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed"
+        >
+          <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none">
+            <path d="M8 1v9M4.5 5.5L8 2l3.5 3.5" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M2 11v2a1 1 0 001 1h10a1 1 0 001-1v-2" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" />
+          </svg>
+          Upload file
+        </button>
       </div>
 
       {/* Textarea */}
-      <div className="space-y-1.5">
-        <label htmlFor="env-input" className="block text-sm font-medium text-neutral-700">
-          Raw .env content
-        </label>
-        <textarea
-          id="env-input"
-          rows={8}
-          value={rawText}
-          onChange={(e) => handleTextChange(e.target.value)}
-          placeholder={"# Paste your .env content here\nDATABASE_URL=postgres://user:pass@localhost/db\nSTRIPE_SECRET_KEY=sk_live_..."}
-          spellCheck={false}
-          className="w-full resize-y rounded-lg border border-neutral-300 bg-neutral-50 p-3 font-mono text-sm text-neutral-800 placeholder:text-neutral-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-          disabled={isPending}
-        />
-      </div>
+      <textarea
+        rows={7}
+        value={rawText}
+        onChange={(e) => handleTextChange(e.target.value)}
+        placeholder={"# Paste your .env content here\nDATABASE_URL=postgres://user:pass@localhost/db\nSTRIPE_SECRET_KEY=sk_live_..."}
+        spellCheck={false}
+        className="w-full resize-y rounded-lg border border-border bg-muted/30 p-3 font-mono text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+        disabled={isPending}
+      />
+
+      {/* No-pairs warning */}
+      {rawText.trim().length > 0 && pairs.length === 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-700 dark:border-amber-800/40 dark:bg-amber-950/30 dark:text-amber-400">
+          <span className="font-medium">No KEY=VALUE pairs found.</span>{" "}
+          Make sure each line uses the format{" "}
+          <code className="rounded bg-amber-100 px-1 py-0.5 text-xs font-mono dark:bg-amber-900/40">KEY=value</code>
+          {" "}— comments (#) and blank lines are ignored.
+        </div>
+      )}
 
       {/* Parsed preview */}
       {pairs.length > 0 && (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-medium text-neutral-700">
+            <p className="text-sm font-medium">
               {pairs.length} key{pairs.length !== 1 ? "s" : ""} parsed
               {selectedPairs.length !== pairs.length && (
-                <span className="ml-1 text-neutral-400">
+                <span className="ml-1 text-muted-foreground">
                   ({selectedPairs.length} selected)
                 </span>
               )}
             </p>
-            <div className="flex gap-3 text-xs text-blue-600">
+            <div className="flex gap-3 text-xs text-primary">
               <button type="button" onClick={() => toggleAll(true)}  className="hover:underline">Select all</button>
               <button type="button" onClick={() => toggleAll(false)} className="hover:underline">Deselect all</button>
             </div>
           </div>
 
-          <div className="overflow-hidden rounded-lg border border-neutral-200">
+          <div className="overflow-hidden rounded-lg border border-border">
             <table className="w-full text-sm">
-              <thead className="bg-neutral-50 text-xs text-neutral-500">
+              <thead className="bg-muted/50 text-xs text-muted-foreground">
                 <tr>
                   <th className="w-8 py-2 pl-3 pr-1 text-left font-medium"></th>
                   <th className="py-2 pl-2 pr-4 text-left font-medium">Key</th>
@@ -215,13 +264,13 @@ export default function EnvFileImporter({ projectId, projectName }: EnvFileImpor
                   )}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-neutral-100">
+              <tbody className="divide-y divide-border">
                 {pairs.map((pair, idx) => {
                   const outcome = outcomeMap.get(pair.key);
                   return (
                     <tr
                       key={`${pair.key}-${idx}`}
-                      className={`transition-colors ${pair.selected ? "bg-white" : "bg-neutral-50 opacity-50"}`}
+                      className={`transition-colors ${pair.selected ? "bg-background" : "bg-muted/30 opacity-50"}`}
                     >
                       <td className="py-2 pl-3 pr-1">
                         <input
@@ -229,15 +278,11 @@ export default function EnvFileImporter({ projectId, projectName }: EnvFileImpor
                           checked={pair.selected}
                           onChange={() => togglePair(idx)}
                           disabled={isPending || importStatus === "done"}
-                          className="h-4 w-4 rounded border-neutral-300 text-blue-600 focus:ring-blue-500"
+                          className="h-4 w-4 rounded border-border"
                         />
                       </td>
-                      <td className="py-2 pl-2 pr-4 font-mono font-medium text-neutral-800">
-                        {pair.key}
-                      </td>
-                      <td className="py-2 pl-2 pr-4 font-mono text-neutral-500">
-                        {maskValue(pair.value)}
-                      </td>
+                      <td className="py-2 pl-2 pr-4 font-mono font-medium">{pair.key}</td>
+                      <td className="py-2 pl-2 pr-4 font-mono text-muted-foreground">{maskValue(pair.value)}</td>
                       {importStatus === "done" && (
                         <td className="py-2 pl-2 pr-3 text-right">
                           {outcome ? <StatusBadge outcome={outcome} /> : null}
@@ -254,7 +299,7 @@ export default function EnvFileImporter({ projectId, projectName }: EnvFileImpor
 
       {/* Global error */}
       {globalError && (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
           {globalError}
         </div>
       )}
@@ -263,10 +308,10 @@ export default function EnvFileImporter({ projectId, projectName }: EnvFileImpor
       {importStatus === "done" && (
         <div className={`rounded-lg border p-3 text-sm ${
           failedCount === 0
-            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-            : "border-amber-200 bg-amber-50 text-amber-700"
+            ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-400"
+            : "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-400"
         }`}>
-          {savedCount > 0 && <span>{savedCount} secret{savedCount !== 1 ? "s" : ""} saved successfully. </span>}
+          {savedCount > 0  && <span>{savedCount} secret{savedCount !== 1 ? "s" : ""} saved. </span>}
           {failedCount > 0 && <span>{failedCount} failed — hover the Failed badge for details.</span>}
         </div>
       )}
@@ -278,7 +323,7 @@ export default function EnvFileImporter({ projectId, projectName }: EnvFileImpor
             type="button"
             onClick={handleImport}
             disabled={isPending || selectedPairs.length === 0}
-            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isPending ? (
               <>
@@ -289,19 +334,14 @@ export default function EnvFileImporter({ projectId, projectName }: EnvFileImpor
                 Saving…
               </>
             ) : (
-              <>
-                Import {selectedPairs.length > 0 ? `${selectedPairs.length} ` : ""}Secret{selectedPairs.length !== 1 ? "s" : ""}
-                <svg className="h-4 w-4" viewBox="0 0 16 16" fill="none">
-                  <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </>
+              `Import ${selectedPairs.length > 0 ? `${selectedPairs.length} ` : ""}Secret${selectedPairs.length !== 1 ? "s" : ""}`
             )}
           </button>
         ) : (
           <button
             type="button"
             onClick={handleReset}
-            className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700 shadow-sm transition-colors hover:bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-neutral-400 focus:ring-offset-2"
+            className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted"
           >
             Import another file
           </button>
@@ -311,7 +351,7 @@ export default function EnvFileImporter({ projectId, projectName }: EnvFileImpor
           <button
             type="button"
             onClick={handleReset}
-            className="text-sm text-neutral-400 hover:text-neutral-600"
+            className="text-sm text-muted-foreground hover:text-foreground"
           >
             Clear
           </button>

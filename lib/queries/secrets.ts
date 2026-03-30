@@ -100,6 +100,35 @@ export async function getDecryptedSecretById(
 }
 
 /**
+ * Fetches and decrypts all accessible secrets within a project in one call.
+ * Returns `{ key, plaintext }` pairs ordered alphabetically by key.
+ */
+export async function getDecryptedSecretsByProject(
+  projectId: string,
+  actor: QueryActor,
+): Promise<{ key: string; plaintext: string }[]> {
+  const baseWhere = { projectId };
+
+  const secrets = await (hasBroadAccess(actor.role)
+    ? prisma.secret.findMany({
+        where:   baseWhere,
+        select:  FULL_SELECT,
+        orderBy: { key: "asc" },
+      })
+    : prisma.secret.findMany({
+        where:   { ...baseWhere, ...allowedAccessWhere(actor) },
+        select:  FULL_SELECT,
+        orderBy: { key: "asc" },
+      })
+  );
+
+  return secrets.map((s) => ({
+    key:       s.key,
+    plaintext: decryptValue(s.encryptedValue, s.iv),
+  }));
+}
+
+/**
  * Fetches all secrets the actor owns or has been granted access to,
  * across all projects. Ciphertext excluded.
  */

@@ -123,3 +123,94 @@ export async function saveNote(rawInput: SaveNoteInput): Promise<SaveNoteResult>
 
   return { success: true, data: { id: note.id } };
 }
+
+// ---------------------------------------------------------------------------
+// Update note
+// ---------------------------------------------------------------------------
+
+const UpdateNoteSchema = z.object({
+  noteId:  z.string().min(1, "Note ID must not be empty."),
+  title:   z.string().min(1, "Title is required."),
+  content: z.string().min(1, "Content is required."),
+});
+
+export type UpdateNoteInput  = z.infer<typeof UpdateNoteSchema>;
+export type UpdateNoteResult =
+  | { success: true }
+  | { success: false; error: string };
+
+/**
+ * Updates a note's title and content.
+ * Requires MODERATOR or above.
+ */
+export async function updateNote(rawInput: UpdateNoteInput): Promise<UpdateNoteResult> {
+  const session = await auth();
+  if (!session?.user) return { success: false, error: "Unauthorized. Please sign in." };
+
+  const actor = { id: session.user.id, role: session.user.role };
+  if (!canUserPerformAction(actor, null, "note", "update")) {
+    return {
+      success: false,
+      error: `Role "${session.user.role}" is not permitted to edit notes.`,
+    };
+  }
+
+  const parsed = UpdateNoteSchema.safeParse({
+    noteId:  rawInput.noteId?.trim(),
+    title:   rawInput.title?.trim(),
+    content: rawInput.content?.trim(),
+  });
+
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues.map((i) => i.message).join(" | ") };
+  }
+
+  const { noteId, title, content } = parsed.data;
+
+  const existing = await prisma.note.findUnique({
+    where:  { id: noteId },
+    select: { id: true },
+  });
+  if (!existing) return { success: false, error: "Note not found." };
+
+  await prisma.note.update({
+    where: { id: noteId },
+    data:  { title, content },
+  });
+
+  return { success: true };
+}
+
+// ---------------------------------------------------------------------------
+// Delete note
+// ---------------------------------------------------------------------------
+
+export type DeleteNoteResult =
+  | { success: true }
+  | { success: false; error: string };
+
+/**
+ * Deletes a single note.
+ * Requires MODERATOR or above.
+ */
+export async function deleteNote(noteId: string): Promise<DeleteNoteResult> {
+  const session = await auth();
+  if (!session?.user) return { success: false, error: "Unauthorized." };
+
+  const actor = { id: session.user.id, role: session.user.role };
+  if (!canUserPerformAction(actor, null, "note", "delete")) {
+    return {
+      success: false,
+      error: `Role "${session.user.role}" is not permitted to delete notes.`,
+    };
+  }
+
+  const note = await prisma.note.findUnique({
+    where:  { id: noteId },
+    select: { id: true },
+  });
+  if (!note) return { success: false, error: "Note not found." };
+
+  await prisma.note.delete({ where: { id: noteId } });
+  return { success: true };
+}
