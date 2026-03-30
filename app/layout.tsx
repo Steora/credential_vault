@@ -30,7 +30,7 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full">
-        <TooltipProvider delayDuration={300}>
+        <TooltipProvider delay={300}>
           {children}
         </TooltipProvider>
         <Toaster position="bottom-right" richColors />

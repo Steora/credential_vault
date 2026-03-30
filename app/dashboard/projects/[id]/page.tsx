@@ -1,11 +1,16 @@
 import Link       from "next/link";
 import { notFound } from "next/navigation";
+import { Role }   from "@prisma/client";
 import { auth }     from "@/auth";
 import { prisma }   from "@/lib/prisma";
 import { canUserPerformAction } from "@/lib/permissions";
+import { getVaultProjectIdsForActor, hasUnrestrictedProjectScope } from "@/lib/queries/access";
+import {
+  projectWhereForVaultRead,
+  VAULT_ENTITY_STATUS,
+} from "@/lib/vault-entity-status";
 import { getSecretsByProject }  from "@/lib/queries/secrets";
 import { getNotesByProject }    from "@/lib/queries/notes";
-import { Badge }             from "@/components/ui/badge";
 import { Separator }         from "@/components/ui/separator";
 import CopyButton            from "@/components/CopyButton";
 import RevealButton          from "@/components/RevealButton";
@@ -17,7 +22,9 @@ import ManageAccessDialog    from "@/components/dashboard/ManageAccessDialog";
 import CopyNoteButton        from "@/components/CopyNoteButton";
 import AddNoteDialog         from "@/components/dashboard/AddNoteDialog";
 import EditNoteDialog        from "@/components/dashboard/EditNoteDialog";
-import DeleteNoteButton      from "@/components/dashboard/DeleteNoteButton";
+import ArchiveNoteButton      from "@/components/dashboard/ArchiveNoteButton";
+import CreateSubprojectDialog from "@/components/dashboard/CreateSubprojectDialog";
+import LeaveProjectButton   from "@/components/dashboard/LeaveProjectButton";
 
 function formatDate(d: Date) {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -37,14 +44,86 @@ export default async function ProjectDetailPage({
   const session = await auth();
   if (!session?.user) return null;
 
-  const actor   = { id: session.user.id, role: session.user.role };
-  const canEdit = canUserPerformAction(actor, null, "secret", "create");
+  const actor = {
+    id:       session.user.id,
+    role:     session.user.role,
+    isActive: session.user.isActive,
+  };
+  const canCreateProject = canUserPerformAction(actor, null, "project", "create");
 
-  const project = await prisma.project.findUnique({
-    where:  { id },
-    select: { id: true, name: true, description: true, createdAt: true },
+  const project = await prisma.project.findFirst({
+    where: { id, ...projectWhereForVaultRead(actor) },
+    select: {
+      id:          true,
+      name:        true,
+      description: true,
+      status:      true,
+      createdAt:   true,
+      parentId:    true,
+      parent:      { select: { id: true, name: true } },
+      children:    {
+        select:  { id: true, name: true, description: true },
+        orderBy: { name: "asc" },
+      },
+    },
   });
   if (!project) notFound();
+
+  const isArchivedProject = project.status === VAULT_ENTITY_STATUS.ARCHIVED;
+
+  const projectMembership = await prisma.projectMember.findFirst({
+    where: { userId: actor.id, projectId: id },
+    select: { id: true },
+  });
+
+  const vaultScope = hasUnrestrictedProjectScope(actor.role)
+    ? null
+    : actor.role === Role.MODERATOR ||
+        actor.role === Role.USER ||
+        actor.role === Role.INTERN
+      ? await getVaultProjectIdsForActor(actor)
+      : null;
+
+  if (actor.role === Role.MODERATOR && vaultScope && !vaultScope.includes(id)) {
+    notFound();
+  }
+
+  if (
+    (actor.role === Role.USER || actor.role === Role.INTERN) &&
+    vaultScope &&
+    !vaultScope.includes(id)
+  ) {
+    notFound();
+  }
+
+  const visibleSubprojects =
+    actor.role === Role.USER || actor.role === Role.INTERN
+      ? vaultScope
+        ? project.children.filter((c) => vaultScope.includes(c.id))
+        : []
+      : project.children;
+
+  const canModeratorPlusVault =
+    canUserPerformAction(actor, null, "secret", "create") &&
+    (hasUnrestrictedProjectScope(actor.role) ||
+      (actor.role === Role.MODERATOR && vaultScope !== null && vaultScope.includes(id)) ||
+      !!projectMembership);
+
+  /** Archived projects stay readable; mutations are disabled. */
+  const canMutateVault = canModeratorPlusVault && !isArchivedProject;
+
+  /** USER may request new secrets/notes for admin approval (not interns). */
+  const canUserRequestPendingSubmission =
+    actor.role === Role.USER && !!projectMembership && !isArchivedProject;
+
+  const showAddSecret = canMutateVault || canUserRequestPendingSubmission;
+  const showAddProjectNote = canMutateVault || canUserRequestPendingSubmission;
+
+  const canLeaveProject =
+    !!projectMembership &&
+    (actor.role === Role.USER ||
+      actor.role === Role.INTERN ||
+      actor.role === Role.MODERATOR);
 
   const [secrets, notes, allUsers] = await Promise.all([
     getSecretsByProject(id, actor),
@@ -71,11 +150,77 @@ export default async function ProjectDetailPage({
           Projects
         </Link>
 
-        <h1 className="mt-2 text-2xl font-bold tracking-tight">{project.name}</h1>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <h1 className="text-2xl font-bold tracking-tight">{project.name}</h1>
+            {isArchivedProject && (
+              <span className="rounded-md border border-muted-foreground/30 bg-muted/50 px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                Archived
+              </span>
+            )}
+          </div>
+          {canLeaveProject && (
+            <LeaveProjectButton projectId={id} projectName={project.name} />
+          )}
+        </div>
+        {project.parent && (
+          <p className="mt-1 text-sm text-muted-foreground">
+            Subproject of{" "}
+            <Link
+              href={`/dashboard/projects/${project.parent.id}`}
+              className="font-medium text-foreground underline-offset-4 hover:underline"
+            >
+              {project.parent.name}
+            </Link>
+          </p>
+        )}
         {project.description && (
           <p className="mt-1 text-sm text-muted-foreground">{project.description}</p>
         )}
       </div>
+
+      {/* ── Subprojects ─────────────────────────────────────────────────── */}
+      {(visibleSubprojects.length > 0 || (canCreateProject && !isArchivedProject)) && (
+        <section className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 className="text-lg font-semibold">Subprojects</h2>
+              <p className="text-xs text-muted-foreground">
+                {visibleSubprojects.length} subproject{visibleSubprojects.length !== 1 ? "s" : ""} under this project
+              </p>
+            </div>
+            {canCreateProject && !isArchivedProject && (
+              <CreateSubprojectDialog parentId={project.id} parentName={project.name} />
+            )}
+          </div>
+
+          {visibleSubprojects.length === 0 ? (
+            <div className="rounded-xl border border-dashed bg-muted/20 px-4 py-8 text-center">
+              <p className="text-sm text-muted-foreground">
+                {canCreateProject
+                  ? "No subprojects yet. Create one to organize secrets and membership by area."
+                  : "No subprojects."}
+              </p>
+            </div>
+          ) : (
+            <ul className="grid gap-2 sm:grid-cols-2">
+              {visibleSubprojects.map((c) => (
+                <li key={c.id}>
+                  <Link
+                    href={`/dashboard/projects/${c.id}`}
+                    className="block rounded-xl border border-border bg-card px-4 py-3 text-sm shadow-sm transition-colors hover:bg-muted/30"
+                  >
+                    <span className="font-medium text-foreground">{c.name}</span>
+                    {c.description && (
+                      <span className="mt-1 block line-clamp-2 text-xs text-muted-foreground">{c.description}</span>
+                    )}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
 
       {/* ── Secrets section ─────────────────────────────────────────────── */}
       <section className="space-y-4">
@@ -88,8 +233,12 @@ export default async function ProjectDetailPage({
           </div>
           <div className="flex items-center gap-2">
             <CopyAllSecretsButton projectId={project.id} secretCount={secrets.length} />
-            {canEdit && (
-              <AddSecretDialog projectId={project.id} projectName={project.name} />
+            {showAddSecret && (
+              <AddSecretDialog
+                projectId={project.id}
+                projectName={project.name}
+                allowBulkImport={canMutateVault || canUserRequestPendingSubmission}
+              />
             )}
           </div>
         </div>
@@ -97,7 +246,7 @@ export default async function ProjectDetailPage({
         {secrets.length === 0 ? (
           <div className="rounded-xl border border-dashed bg-muted/20 p-10 text-center">
             <p className="text-sm text-muted-foreground">
-              No secrets yet.{canEdit ? " Add one above." : ""}
+              No secrets yet.{showAddSecret ? " Add one above." : ""}
             </p>
           </div>
         ) : (
@@ -132,10 +281,10 @@ export default async function ProjectDetailPage({
                       <div className="flex items-center justify-end gap-1">
                         <RevealButton secretId={s.id} secretKey={s.key} />
                         <CopyButton secretId={s.id} />
-                        {canEdit && (
+                        {canMutateVault && (
                           <EditSecretDialog secretId={s.id} secretKey={s.key} />
                         )}
-                        {canEdit && (
+                        {canMutateVault && (
                           <ManageAccessDialog
                             type="secret"
                             resourceId={s.id}
@@ -144,7 +293,7 @@ export default async function ProjectDetailPage({
                             allUsers={allUsers}
                           />
                         )}
-                        {canEdit && (
+                        {canMutateVault && (
                           <DeleteSecretButton secretId={s.id} secretKey={s.key} />
                         )}
                       </div>
@@ -168,7 +317,7 @@ export default async function ProjectDetailPage({
               {notes.length} note{notes.length !== 1 ? "s" : ""} linked to this project
             </p>
           </div>
-          {canEdit && (
+          {showAddProjectNote && (
             <AddNoteDialog projectId={project.id} projectName={project.name} />
           )}
         </div>
@@ -176,7 +325,7 @@ export default async function ProjectDetailPage({
         {notes.length === 0 ? (
           <div className="rounded-xl border border-dashed bg-muted/20 p-10 text-center">
             <p className="text-sm text-muted-foreground">
-              No notes yet.{canEdit ? " Add one above." : ""}
+              No notes yet.{showAddProjectNote ? " Add one above." : ""}
             </p>
           </div>
         ) : (
@@ -185,7 +334,14 @@ export default async function ProjectDetailPage({
               <div key={note.id} className="rounded-xl border bg-card p-5 shadow-sm">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0 flex-1">
-                    <h3 className="font-semibold">{note.title}</h3>
+                    <h3 className="font-semibold">
+                      <Link
+                        href={`/dashboard/notes/${note.id}`}
+                        className="hover:underline underline-offset-2"
+                      >
+                        {note.title}
+                      </Link>
+                    </h3>
                     <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">
                       {note.content}
                     </p>
@@ -196,14 +352,14 @@ export default async function ProjectDetailPage({
                     <CopyNoteButton title={note.title} content={note.content} />
 
                     {/* Edit, manage access, delete — MODERATOR and above only */}
-                    {canEdit && (
+                    {canMutateVault && (
                       <EditNoteDialog
                         noteId={note.id}
                         initialTitle={note.title}
                         initialContent={note.content}
                       />
                     )}
-                    {canEdit && (
+                    {canMutateVault && (
                       <ManageAccessDialog
                         type="note"
                         resourceId={note.id}
@@ -212,8 +368,8 @@ export default async function ProjectDetailPage({
                         allUsers={allUsers}
                       />
                     )}
-                    {canEdit && (
-                      <DeleteNoteButton noteId={note.id} noteTitle={note.title} />
+                    {canMutateVault && (
+                      <ArchiveNoteButton noteId={note.id} noteTitle={note.title} />
                     )}
                   </div>
                 </div>

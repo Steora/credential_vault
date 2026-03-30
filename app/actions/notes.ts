@@ -1,11 +1,19 @@
 "use server";
 
 import { z } from "zod";
-import { NoteType } from "@prisma/client";
+import { ActivityAction, NoteType, Role } from "@prisma/client";
 
 import { auth } from "@/auth";
+import { logActivity } from "@/lib/activity-log";
 import { prisma } from "@/lib/prisma";
 import { canUserPerformAction } from "@/lib/permissions";
+import { assertActiveVaultSession } from "@/lib/session-guards";
+import { sendPendingApprovalNotificationEmail } from "@/lib/email";
+import {
+  assertModeratorAssignedToProject,
+  assertUserInternAssignedToProject,
+} from "@/lib/project-scope-guards";
+import { vaultWhereActive, VAULT_ENTITY_STATUS } from "@/lib/vault-entity-status";
 
 // ---------------------------------------------------------------------------
 // Schema — projectId is conditionally required based on type
@@ -35,7 +43,7 @@ export type SaveNoteInput = z.infer<typeof SaveNoteSchema>;
 // ---------------------------------------------------------------------------
 
 export type SaveNoteResult =
-  | { success: true;  data: { id: string } }
+  | { success: true; data: { id: string }; pendingApproval?: boolean }
   | { success: false; error: string; fieldErrors?: Record<string, string> };
 
 // ---------------------------------------------------------------------------
@@ -56,23 +64,18 @@ export async function saveNote(rawInput: SaveNoteInput): Promise<SaveNoteResult>
   // 1. Auth
   // ------------------------------------------------------------------
   const session = await auth();
-  if (!session?.user) {
-    return { success: false, error: "Unauthorized. Please sign in." };
+  const vault = assertActiveVaultSession(session);
+  if (!vault.ok) {
+    return { success: false, error: vault.error };
   }
 
   // ------------------------------------------------------------------
   // 2. RBAC
   // ------------------------------------------------------------------
-  const actor = { id: session.user.id, role: session.user.role };
-  if (!canUserPerformAction(actor, null, "note", "create")) {
-    return {
-      success: false,
-      error: `Your role (${session.user.role}) only has read access. Creating notes requires Moderator or above.`,
-    };
-  }
+  const actor = { id: vault.user.id, role: vault.user.role };
 
   // ------------------------------------------------------------------
-  // 3. Trim + validate
+  // 2. Trim + validate
   // ------------------------------------------------------------------
   const parsed = SaveNoteSchema.safeParse({
     title:     rawInput.title?.trim(),
@@ -90,12 +93,81 @@ export async function saveNote(rawInput: SaveNoteInput): Promise<SaveNoteResult>
 
   const { title, content, type, projectId } = parsed.data;
 
-  // ------------------------------------------------------------------
-  // 4. For PROJECT_BASED notes, verify the project exists.
-  // ------------------------------------------------------------------
+  if (actor.role === Role.INTERN) {
+    return {
+      success: false,
+      error: "Interns cannot create notes.",
+    };
+  }
+
+  // USER — submit for admin approval.
+  if (actor.role === Role.USER) {
+    if (type === NoteType.PROJECT_BASED && projectId) {
+      const project = await prisma.project.findFirst({
+        where:  { id: projectId, ...vaultWhereActive },
+        select: { id: true, name: true },
+      });
+      if (!project) {
+        return {
+          success: false,
+          error:   "Validation failed.",
+          fieldErrors: { projectId: "Selected project no longer exists." },
+        };
+      }
+
+      const scope = await assertUserInternAssignedToProject(actor, projectId);
+      if (!scope.ok) return { success: false, error: scope.error };
+    }
+
+    const pending = await prisma.pendingNoteSubmission.create({
+      data: {
+        submitterId: actor.id,
+        title,
+        content,
+        type,
+        projectId: type === NoteType.PROJECT_BASED ? (projectId ?? null) : null,
+      },
+      select: { id: true },
+    });
+
+    await logActivity({
+      actorId:    vault.user.id,
+      action:     ActivityAction.CREATE,
+      entityType: "pending_note",
+      entityId:   pending.id,
+      label:      title,
+    });
+
+    const admins = await prisma.user.findMany({
+      where: { isActive: true, role: { in: [Role.ADMIN, Role.SUPERADMIN] } },
+      select: { email: true },
+    });
+
+    const summaryLine =
+      type === NoteType.PROJECT_BASED && projectId
+        ? `Project-based — title: ${title}`
+        : `General note — title: ${title}`;
+
+    await sendPendingApprovalNotificationEmail({
+      toAddresses:    admins.map((a) => a.email),
+      kind:           "note",
+      summaryLine,
+      submitterLabel: vault.user.email ?? vault.user.id,
+    }).catch(() => {});
+
+    return { success: true, data: { id: pending.id }, pendingApproval: true };
+  }
+
+  if (!canUserPerformAction(actor, null, "note", "create")) {
+    return {
+      success: false,
+      error: `Your role (${vault.user.role}) only has read access. Creating notes requires Moderator or above.`,
+    };
+  }
+
   if (type === NoteType.PROJECT_BASED && projectId) {
-    const project = await prisma.project.findUnique({
-      where:  { id: projectId },
+    const project = await prisma.project.findFirst({
+      where:  { id: projectId, ...vaultWhereActive },
       select: { id: true },
     });
     if (!project) {
@@ -105,20 +177,30 @@ export async function saveNote(rawInput: SaveNoteInput): Promise<SaveNoteResult>
         fieldErrors: { projectId: "Selected project no longer exists." },
       };
     }
+
+    const scope = await assertModeratorAssignedToProject(actor, projectId);
+    if (!scope.ok) {
+      return { success: false, error: scope.error };
+    }
   }
 
-  // ------------------------------------------------------------------
-  // 5. Persist — projectId is null for NORMAL notes.
-  // ------------------------------------------------------------------
   const note = await prisma.note.create({
     data: {
       title,
       content,
       type,
       projectId: type === NoteType.PROJECT_BASED ? (projectId ?? null) : null,
-      ownerId:   session.user.id,
+      ownerId:   vault.user.id,
     },
     select: { id: true },
+  });
+
+  await logActivity({
+    actorId:    vault.user.id,
+    action:     ActivityAction.CREATE,
+    entityType: "note",
+    entityId:   note.id,
+    label:      title,
   });
 
   return { success: true, data: { id: note.id } };
@@ -145,13 +227,14 @@ export type UpdateNoteResult =
  */
 export async function updateNote(rawInput: UpdateNoteInput): Promise<UpdateNoteResult> {
   const session = await auth();
-  if (!session?.user) return { success: false, error: "Unauthorized. Please sign in." };
+  const vault = assertActiveVaultSession(session);
+  if (!vault.ok) return { success: false, error: vault.error };
 
-  const actor = { id: session.user.id, role: session.user.role };
+  const actor = { id: vault.user.id, role: vault.user.role };
   if (!canUserPerformAction(actor, null, "note", "update")) {
     return {
       success: false,
-      error: `Role "${session.user.role}" is not permitted to edit notes.`,
+      error: `Role "${vault.user.role}" is not permitted to edit notes.`,
     };
   }
 
@@ -167,50 +250,81 @@ export async function updateNote(rawInput: UpdateNoteInput): Promise<UpdateNoteR
 
   const { noteId, title, content } = parsed.data;
 
-  const existing = await prisma.note.findUnique({
-    where:  { id: noteId },
-    select: { id: true },
+  const existing = await prisma.note.findFirst({
+    where:  { id: noteId, status: VAULT_ENTITY_STATUS.ACTIVE },
+    select: { id: true, type: true, projectId: true },
   });
   if (!existing) return { success: false, error: "Note not found." };
+
+  if (existing.type === NoteType.PROJECT_BASED && existing.projectId) {
+    const scope = await assertModeratorAssignedToProject(actor, existing.projectId);
+    if (!scope.ok) return { success: false, error: scope.error };
+  }
 
   await prisma.note.update({
     where: { id: noteId },
     data:  { title, content },
   });
 
+  await logActivity({
+    actorId:    vault.user.id,
+    action:     ActivityAction.UPDATE,
+    entityType: "note",
+    entityId:   noteId,
+    label:      title,
+  });
+
   return { success: true };
 }
 
 // ---------------------------------------------------------------------------
-// Delete note
+// Archive note
 // ---------------------------------------------------------------------------
 
-export type DeleteNoteResult =
+export type ArchiveNoteResult =
   | { success: true }
   | { success: false; error: string };
 
 /**
- * Deletes a single note.
- * Requires MODERATOR or above.
+ * Archives a single note (no hard delete).
+ * Requires MODERATOR or above (same permission tier as former delete).
  */
-export async function deleteNote(noteId: string): Promise<DeleteNoteResult> {
+export async function archiveNote(noteId: string): Promise<ArchiveNoteResult> {
   const session = await auth();
-  if (!session?.user) return { success: false, error: "Unauthorized." };
+  const vault = assertActiveVaultSession(session);
+  if (!vault.ok) return { success: false, error: vault.error };
 
-  const actor = { id: session.user.id, role: session.user.role };
+  const actor = { id: vault.user.id, role: vault.user.role };
   if (!canUserPerformAction(actor, null, "note", "delete")) {
     return {
       success: false,
-      error: `Role "${session.user.role}" is not permitted to delete notes.`,
+      error: `Role "${vault.user.role}" is not permitted to archive notes.`,
     };
   }
 
-  const note = await prisma.note.findUnique({
-    where:  { id: noteId },
-    select: { id: true },
+  const note = await prisma.note.findFirst({
+    where:  { id: noteId, status: VAULT_ENTITY_STATUS.ACTIVE },
+    select: { id: true, title: true, type: true, projectId: true },
   });
   if (!note) return { success: false, error: "Note not found." };
 
-  await prisma.note.delete({ where: { id: noteId } });
+  if (note.type === NoteType.PROJECT_BASED && note.projectId) {
+    const scope = await assertModeratorAssignedToProject(actor, note.projectId);
+    if (!scope.ok) return { success: false, error: scope.error };
+  }
+
+  await prisma.note.update({
+    where: { id: noteId },
+    data:  { status: VAULT_ENTITY_STATUS.ARCHIVED },
+  });
+
+  await logActivity({
+    actorId:    vault.user.id,
+    action:     ActivityAction.ARCHIVE,
+    entityType: "note",
+    entityId:   noteId,
+    label:      note.title,
+  });
+
   return { success: true };
 }

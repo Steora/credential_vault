@@ -38,6 +38,8 @@ function NoteIcon()     { return <svg className="size-4 shrink-0" viewBox="0 0 1
 function UsersIcon()    { return <svg className="size-4 shrink-0" viewBox="0 0 16 16" fill="none"><circle cx="6" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.25"/><path d="M1 13c0-2.761 2.239-4 5-4s5 1.239 5 4" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round"/><circle cx="12" cy="5.5" r="2" stroke="currentColor" strokeWidth="1.25"/><path d="M14.5 13c0-1.933-1.12-3-3-3" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round"/></svg>; }
 function LogOutIcon()   { return <svg className="size-4 shrink-0" viewBox="0 0 16 16" fill="none"><path d="M6 2H3a1 1 0 00-1 1v10a1 1 0 001 1h3M10.5 11l3-3-3-3M13.5 8H6" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round"/></svg>; }
 function ShieldIcon()   { return <svg className="size-4 shrink-0" viewBox="0 0 16 16" fill="none"><path d="M8 1L2 3.5v4C2 11 5 13.5 8 15c3-1.5 6-4 6-7.5v-4L8 1z" stroke="currentColor" strokeWidth="1.25" strokeLinejoin="round"/></svg>; }
+function ActivityIcon() { return <svg className="size-4 shrink-0" viewBox="0 0 16 16" fill="none"><path d="M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13z" stroke="currentColor" strokeWidth="1.25"/><path d="M8 4.25v4l2.75 1.5" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round"/></svg>; }
+function ApprovalsIcon(){ return <svg className="size-4 shrink-0" viewBox="0 0 16 16" fill="none"><path d="M3 2.5h10v11H3v-11z" stroke="currentColor" strokeWidth="1.25" strokeLinejoin="round"/><path d="M5 5h6M5 7.5h6M5 10h3" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round"/></svg>; }
 
 // ---------------------------------------------------------------------------
 // Types
@@ -70,6 +72,9 @@ const ROLE_BADGE_VARIANT: Record<Role, "default" | "secondary" | "outline" | "de
 
 const ADMIN_ROLES = new Set<Role>([Role.ADMIN, Role.SUPERADMIN]);
 
+/** Dashboard + Activity — Moderator and above (not vault-only users). */
+const ELEVATED_ROLES = new Set<Role>([Role.SUPERADMIN, Role.ADMIN, Role.MODERATOR]);
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -81,14 +86,27 @@ interface AppSidebarProps {
 export default function AppSidebar({ user }: AppSidebarProps) {
   const pathname = usePathname();
 
-  const mainNav: NavItem[] = [
-    { label: "Overview",       href: "/dashboard",              icon: <HomeIcon />   },
-    { label: "Projects",       href: "/dashboard/projects",     icon: <FolderIcon /> },
-    { label: "General Notes",  href: "/dashboard/notes",        icon: <NoteIcon />   },
-  ];
+  const vaultOnly = user.role === Role.USER || user.role === Role.INTERN;
+
+  const mainNav: NavItem[] = vaultOnly
+    ? [
+        { label: "Projects",      href: "/dashboard/projects", icon: <FolderIcon /> },
+        { label: "General Notes", href: "/dashboard/notes",    icon: <NoteIcon />   },
+      ]
+    : [
+        { label: "Dashboard",     href: "/dashboard",          icon: <HomeIcon />   },
+        ...(ELEVATED_ROLES.has(user.role)
+          ? [{ label: "Activity", href: "/dashboard/activity", icon: <ActivityIcon /> } as const]
+          : []),
+        { label: "Projects",      href: "/dashboard/projects", icon: <FolderIcon /> },
+        { label: "General Notes", href: "/dashboard/notes",    icon: <NoteIcon />   },
+      ];
+
+  const homeHref = vaultOnly ? "/dashboard/projects" : "/dashboard";
 
   const adminNav: NavItem[] = [
     { label: "User Management", href: "/dashboard/users",       icon: <UsersIcon />  },
+    { label: "Approvals",       href: "/dashboard/approvals",   icon: <ApprovalsIcon /> },
   ];
 
   const handleSignOut = async () => {
@@ -97,15 +115,21 @@ export default function AppSidebar({ user }: AppSidebarProps) {
   };
 
   const NavLink = ({ item }: { item: NavItem }) => {
-    const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
+    const isActive =
+      item.href === "/dashboard"
+        ? pathname === "/dashboard"
+        : pathname === item.href || pathname.startsWith(item.href + "/");
     return (
       <SidebarMenuItem>
-        <SidebarMenuButton asChild isActive={isActive}>
-          <Link href={item.href} className="flex items-center gap-2.5">
-            {item.icon}
-            <span>{item.label}</span>
-          </Link>
-        </SidebarMenuButton>
+        <SidebarMenuButton
+          isActive={isActive}
+          render={
+            <Link href={item.href} className="flex items-center gap-2.5">
+              {item.icon}
+              <span>{item.label}</span>
+            </Link>
+          }
+        />
       </SidebarMenuItem>
     );
   };
@@ -115,7 +139,7 @@ export default function AppSidebar({ user }: AppSidebarProps) {
 
       {/* Header */}
       <SidebarHeader className="flex flex-row items-center justify-between gap-2 px-4 py-3">
-        <Link href="/dashboard" className="flex items-center gap-2 font-semibold text-sm group-data-[collapsible=icon]:hidden">
+        <Link href={homeHref} className="flex items-center gap-2 font-semibold text-sm group-data-[collapsible=icon]:hidden">
           <ShieldIcon />
           <span>Credential Vault</span>
         </Link>

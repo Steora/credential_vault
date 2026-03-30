@@ -49,7 +49,8 @@ export default function ManageAccessDialog({
 
   const available = allUsers.filter((u) => !access.some((a) => a.id === u.id));
 
-  const handleAdd = (userId: string) => {
+  const handleAdd = (userId: string | null) => {
+    if (userId == null) return;
     const user = allUsers.find((u) => u.id === userId);
     if (!user) return;
 

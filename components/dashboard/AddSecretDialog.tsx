@@ -39,7 +39,11 @@ function ManualSecretForm({
     startTransition(async () => {
       const result = await saveSecret({ key: key.trim(), value: value.trim(), projectId });
       if (result.success) {
-        toast.success(`Secret "${key.trim()}" saved.`);
+        if (result.pendingApproval) {
+          toast.success(`Request submitted. An admin will review "${key.trim()}" before it appears in the vault.`);
+        } else {
+          toast.success(`Secret "${key.trim()}" saved.`);
+        }
         setKey("");
         setValue("");
         onSuccess();
@@ -95,9 +99,15 @@ function ManualSecretForm({
 interface Props {
   projectId:   string;
   projectName: string;
+  /** When false (e.g. USER role), only manual single-secret entry — no .env bulk import. */
+  allowBulkImport?: boolean;
 }
 
-export default function AddSecretDialog({ projectId, projectName }: Props) {
+export default function AddSecretDialog({
+  projectId,
+  projectName,
+  allowBulkImport = true,
+}: Props) {
   const [open, setOpen] = useState(false);
   const router = useRouter();
 
@@ -124,24 +134,33 @@ export default function AddSecretDialog({ projectId, projectName }: Props) {
           <DialogTitle>Add Secret — {projectName}</DialogTitle>
         </DialogHeader>
 
-        <Tabs defaultValue="manual" className="mt-1">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="manual">Write manually</TabsTrigger>
-            <TabsTrigger value="env">Paste / upload .env</TabsTrigger>
-          </TabsList>
+        {allowBulkImport ? (
+          <Tabs defaultValue="manual" className="mt-1">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="manual">Write manually</TabsTrigger>
+              <TabsTrigger value="env">Paste / upload .env</TabsTrigger>
+            </TabsList>
 
-          <TabsContent value="manual" className="mt-4">
+            <TabsContent value="manual" className="mt-4">
+              <ManualSecretForm projectId={projectId} onSuccess={handleSuccess} />
+            </TabsContent>
+
+            <TabsContent value="env" className="mt-4">
+              <EnvFileImporter
+                projectId={projectId}
+                projectName={projectName}
+                onImportSuccess={handleSuccess}
+              />
+            </TabsContent>
+          </Tabs>
+        ) : (
+          <div className="mt-4">
+            <p className="mb-3 text-xs text-muted-foreground">
+              Your submission will be sent to an administrator for approval before it appears in this project.
+            </p>
             <ManualSecretForm projectId={projectId} onSuccess={handleSuccess} />
-          </TabsContent>
-
-          <TabsContent value="env" className="mt-4">
-            <EnvFileImporter
-              projectId={projectId}
-              projectName={projectName}
-              onImportSuccess={handleSuccess}
-            />
-          </TabsContent>
-        </Tabs>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );

@@ -7,6 +7,7 @@
  * Never import this file from middleware.ts.
  */
 import NextAuth from "next-auth";
+import type { Adapter } from "next-auth/adapters";
 import Credentials from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import bcrypt from "bcryptjs";
@@ -18,7 +19,7 @@ import { authConfig } from "./auth.config";
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
 
-  adapter: PrismaAdapter(prisma),
+  adapter: PrismaAdapter(prisma) as Adapter,
 
   callbacks: {
     // Keep `authorized` and `session` from authConfig; override `jwt` so that
@@ -67,8 +68,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         const passwordMatch = await bcrypt.compare(password, user.passwordHash);
         if (!passwordMatch) return null;
-
-        if (user.isActive === false) return null;
 
         return {
           id:       user.id,

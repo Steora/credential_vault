@@ -11,7 +11,7 @@
 import type { NextAuthConfig } from "next-auth";
 import type { Role } from "@prisma/client";  // type-only import → stripped at build time
 
-const PUBLIC_PATHS = ["/login", "/register", "/api/auth"];
+const PUBLIC_PATHS = ["/login", "/register", "/invite", "/api/auth"];
 
 export const authConfig = {
   pages: {
@@ -31,11 +31,10 @@ export const authConfig = {
       if (isPublic) return true;
 
       const isLoggedIn = !!auth?.user;
-      // Deactivated users are treated as unauthenticated — forces sign-out
-      const isActive = (auth?.user as { isActive?: boolean } | undefined)?.isActive !== false;
-      if (isLoggedIn && isActive) return true;
+      // Inactive users remain authenticated so they can reach the dashboard shell,
+      // which shows a limited “account inactive” state instead of vault content.
+      if (isLoggedIn) return true;
 
-      // Not logged in (or deactivated) + not a public route → redirect to /login
       return false;
     },
 

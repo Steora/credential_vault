@@ -71,8 +71,8 @@ export async function registerAction(
 
   const parsed = RegisterSchema.safeParse(raw);
   if (!parsed.success) {
-    const first = parsed.error.errors[0];
-    return { success: false, error: first.message };
+    const first = parsed.error.issues[0];
+    return { success: false, error: first?.message ?? "Invalid input." };
   }
 
   const { name, email, password } = parsed.data;
@@ -80,6 +80,17 @@ export async function registerAction(
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
     return { success: false, error: "An account with that email already exists." };
+  }
+
+  const pendingInvite = await prisma.userInvitation.findFirst({
+    where: { email, acceptedAt: null, expiresAt: { gt: new Date() } },
+    select: { id: true },
+  });
+  if (pendingInvite) {
+    return {
+      success: false,
+      error: "An invitation is pending for this email. Check your inbox or ask an admin to resend.",
+    };
   }
 
   const passwordHash = await bcrypt.hash(password, 12);

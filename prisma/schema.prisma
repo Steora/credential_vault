@@ -37,8 +37,62 @@ model User {
   sharedSecrets  Secret[] @relation("SecretAccess")
   sharedNotes    Note[]   @relation("NoteAccess")
 
+  /** Explicit project membership (ADMIN/SUPERADMIN assignments on User Management). */
+  projectMembers ProjectMember[]
+
+  activityLogs ActivityLog[]
+
+  /** Invitations sent by this admin/superadmin. */
+  sentInvitations UserInvitation[] @relation("InvitationSender")
+
+  pendingSecretSubmissionsSubmitted PendingSecretSubmission[] @relation("PendingSecretSubmitter")
+  pendingSecretSubmissionsReviewed  PendingSecretSubmission[] @relation("PendingSecretReviewer")
+  pendingNoteSubmissionsSubmitted   PendingNoteSubmission[]   @relation("PendingNoteSubmitter")
+  pendingNoteSubmissionsReviewed    PendingNoteSubmission[]   @relation("PendingNoteReviewer")
+
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+}
+
+/** Email invite created by ADMIN/SUPERADMIN; user completes signup via token link. */
+model UserInvitation {
+  id          String    @id @default(cuid())
+  token       String    @unique
+  email       String
+  role        Role
+  invitedById String
+  invitedBy   User      @relation("InvitationSender", fields: [invitedById], references: [id], onDelete: Cascade)
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([email])
+}
+
+enum ActivityAction {
+  CREATE
+  UPDATE
+  DELETE
+  ARCHIVE
+  ASSIGN
+  REMOVE
+  LEAVE
+  STATUS
+}
+
+/** Audit trail for vault / admin mutations (visible on Activity page). */
+model ActivityLog {
+  id         String         @id @default(cuid())
+  createdAt  DateTime       @default(now())
+  actorId    String
+  actor      User           @relation(fields: [actorId], references: [id], onDelete: Cascade)
+  action     ActivityAction
+  entityType String
+  entityId   String?
+  label      String?        @db.Text
+
+  @@index([createdAt])
+  @@index([entityType, entityId])
 }
 
 // ---------------------------------------------------------------------------
@@ -85,9 +139,35 @@ model Project {
   id          String   @id @default(cuid())
   name        String   @unique
   description String?
+  /** When set, this project is a subproject of another project. */
+  parentId    String?
+  parent      Project?  @relation("ProjectHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children    Project[] @relation("ProjectHierarchy")
+
   secrets     Secret[]
   notes       Note[]
+  members     ProjectMember[]
+  status      VaultEntityStatus @default(ACTIVE)
   createdAt   DateTime @default(now())
+
+  pendingSecretSubmissions PendingSecretSubmission[]
+  pendingNoteSubmissions   PendingNoteSubmission[]
+
+  @@index([parentId])
+  @@index([status])
+}
+
+model ProjectMember {
+  id        String   @id @default(cuid())
+  userId    String
+  projectId String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, projectId])
+  @@index([userId])
+  @@index([projectId])
 }
 
 model Secret {
@@ -119,6 +199,12 @@ enum NoteType {
   PROJECT_BASED
 }
 
+enum VaultEntityStatus {
+  ACTIVE
+  ARCHIVED
+  DELETED
+}
+
 model Note {
   id          String   @id @default(cuid())
   title       String
@@ -139,6 +225,57 @@ model Note {
   // Stored as a relation (not String[]) so referential integrity is enforced.
   sharedWith  User[]   @relation("NoteAccess")
 
+  status      VaultEntityStatus @default(ACTIVE)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@index([status])
+}
+
+enum PendingSubmissionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+/** USER-submitted secret awaiting ADMIN/SUPERADMIN approval (not live until approved). */
+model PendingSecretSubmission {
+  id             String                  @id @default(cuid())
+  createdAt      DateTime                @default(now())
+  status         PendingSubmissionStatus @default(PENDING)
+  submitterId    String
+  submitter      User                    @relation("PendingSecretSubmitter", fields: [submitterId], references: [id], onDelete: Cascade)
+  projectId      String
+  project        Project                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  key            String
+  encryptedValue String
+  iv             String
+  reviewedById   String?
+  reviewer       User?                   @relation("PendingSecretReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt     DateTime?
+  rejectionNote  String?                 @db.Text
+
+  @@index([status])
+  @@index([submitterId])
+}
+
+/** USER-submitted note awaiting ADMIN/SUPERADMIN approval. */
+model PendingNoteSubmission {
+  id             String                  @id @default(cuid())
+  createdAt      DateTime                @default(now())
+  status         PendingSubmissionStatus @default(PENDING)
+  submitterId    String
+  submitter      User                    @relation("PendingNoteSubmitter", fields: [submitterId], references: [id], onDelete: Cascade)
+  title          String
+  content        String                  @db.Text
+  type           NoteType
+  projectId      String?
+  project        Project?                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  reviewedById   String?
+  reviewer       User?                   @relation("PendingNoteReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt     DateTime?
+  rejectionNote  String?                 @db.Text
+
+  @@index([status])
+  @@index([submitterId])
 }

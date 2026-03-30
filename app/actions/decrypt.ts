@@ -1,6 +1,7 @@
 "use server";
 
 import { auth }                        from "@/auth";
+import { assertActiveVaultSession }    from "@/lib/session-guards";
 import { getDecryptedSecretById, getDecryptedSecretsByProject } from "@/lib/queries/secrets";
 
 export type DecryptResult =
@@ -19,16 +20,20 @@ export type DecryptResult =
  */
 export async function decryptSecretValue(secretId: string): Promise<DecryptResult> {
   const session = await auth();
-
-  if (!session?.user) {
-    return { success: false, error: "Unauthorized. Please sign in." };
+  const vault = assertActiveVaultSession(session);
+  if (!vault.ok) {
+    return { success: false, error: vault.error };
   }
 
   if (!secretId?.trim()) {
     return { success: false, error: "Invalid secret ID." };
   }
 
-  const actor = { id: session.user.id, role: session.user.role };
+  const actor = {
+    id:       vault.user.id,
+    role:     vault.user.role,
+    isActive: vault.user.isActive,
+  };
 
   const secret = await getDecryptedSecretById(secretId.trim(), actor);
 
@@ -60,16 +65,20 @@ export type DecryptAllResult =
  */
 export async function decryptAllProjectSecrets(projectId: string): Promise<DecryptAllResult> {
   const session = await auth();
-
-  if (!session?.user) {
-    return { success: false, error: "Unauthorized. Please sign in." };
+  const vault = assertActiveVaultSession(session);
+  if (!vault.ok) {
+    return { success: false, error: vault.error };
   }
 
   if (!projectId?.trim()) {
     return { success: false, error: "Invalid project ID." };
   }
 
-  const actor = { id: session.user.id, role: session.user.role };
+  const actor = {
+    id:       vault.user.id,
+    role:     vault.user.role,
+    isActive: vault.user.isActive,
+  };
 
   const entries = await getDecryptedSecretsByProject(projectId.trim(), actor);
 

@@ -18,6 +18,7 @@ import {
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { updateUserRole, deactivateUser, reactivateUser } from "@/app/actions/users";
+import UserProjectAssignmentsCell from "@/components/dashboard/UserProjectAssignmentsCell";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -30,6 +31,12 @@ export interface UserRow {
   role:      Role;
   isActive:  boolean;
   createdAt: string;
+  assignedProjects: {
+    id:       string;
+    name:     string;
+    parentId: string | null;
+    parent:   { id: string; name: string } | null;
+  }[];
 }
 
 interface Props {
@@ -82,7 +89,16 @@ function UserTableRow({
   const actorRank      = ROLE_RANK[currentUserRole];
   const targetRank     = ROLE_RANK[user.role];
   const canModify      = !isSelf && actorRank > targetRank;
-  const canToggleActive = canModify;
+  /** Only ADMIN / SUPERADMIN may change activation status (not Moderator and below). */
+  const canToggleStatus =
+    !isSelf &&
+    (currentUserRole === Role.ADMIN || currentUserRole === Role.SUPERADMIN) &&
+    (currentUserRole === Role.SUPERADMIN || actorRank > targetRank);
+
+  const canManageProjectAssignments =
+    !isSelf &&
+    (currentUserRole === Role.ADMIN || currentUserRole === Role.SUPERADMIN) &&
+    (currentUserRole === Role.SUPERADMIN || actorRank > targetRank);
 
   // Roles the current actor can assign to this user
   const assignableRoles = ALL_ROLES.filter((r) => {
@@ -91,6 +107,8 @@ function UserTableRow({
   });
 
   const handleRoleChange = (newRole: Role) => {
+    if (!newRole || newRole === user.role) return;
+
     startTransition(async () => {
       const result = await updateUserRole(user.id, newRole);
       if (result.success) {
@@ -142,16 +160,59 @@ function UserTableRow({
       </TableCell>
 
       <TableCell>
-        <Badge
-          variant={user.isActive ? "outline" : "secondary"}
-          className={`text-xs ${user.isActive ? "text-green-600 border-green-500" : "text-muted-foreground"}`}
-        >
-          {user.isActive ? "Active" : "Inactive"}
-        </Badge>
+        {canToggleStatus && user.isActive ? (
+          <AlertDialog>
+            <AlertDialogTrigger
+              render={
+                <Badge
+                  variant="outline"
+                  className={`cursor-pointer text-xs text-green-600 border-green-500 hover:bg-muted/60`}
+                  render={<button type="button" disabled={isPending} aria-label="Change account status" />}
+                >
+                  Active
+                </Badge>
+              }
+            />
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Set {user.name ?? user.email} to inactive?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Their account will be deactivated. They will be removed from all project sharing and will
+                  no longer see projects, credentials, or notes. They can still sign in, but they will not
+                  have access until an administrator reactivates them.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleDeactivate}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  Set inactive
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        ) : (
+          <Badge
+            variant={user.isActive ? "outline" : "secondary"}
+            className={`text-xs ${user.isActive ? "text-green-600 border-green-500" : "text-muted-foreground"}`}
+          >
+            {user.isActive ? "Active" : "Inactive"}
+          </Badge>
+        )}
       </TableCell>
 
       <TableCell className="text-sm text-muted-foreground">
         {formatDate(user.createdAt)}
+      </TableCell>
+
+      <TableCell>
+        <UserProjectAssignmentsCell
+          targetUser={{ id: user.id, name: user.name, email: user.email }}
+          assignedProjects={user.assignedProjects}
+          canManage={canManageProjectAssignments}
+        />
       </TableCell>
 
       <TableCell className="text-right">
@@ -163,13 +224,19 @@ function UserTableRow({
             {canModify && user.isActive && assignableRoles.length > 0 && (
               <Select
                 value={user.role}
-                onValueChange={(v) => handleRoleChange(v as Role)}
+                onValueChange={(v) => {
+                  if (!v) return;
+                  handleRoleChange(v as Role);
+                }}
                 disabled={isPending}
               >
                 <SelectTrigger className="h-7 w-32 text-xs">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent align="end" sideOffset={8}>
+                  <SelectItem value={user.role} disabled className="text-xs text-muted-foreground">
+                    {user.role} (current)
+                  </SelectItem>
                   {assignableRoles.map((r) => (
                     <SelectItem key={r} value={r} className="text-xs">
                       {r}
@@ -179,47 +246,8 @@ function UserTableRow({
               </Select>
             )}
 
-            {/* Deactivate */}
-            {canToggleActive && user.isActive && (
-              <AlertDialog>
-                <AlertDialogTrigger
-                  render={
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                      disabled={isPending}
-                      aria-label="Deactivate user"
-                    >
-                      <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none">
-                        <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.25" />
-                        <path d="M5 8h6" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" />
-                      </svg>
-                    </Button>
-                  }
-                />
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Deactivate {user.name ?? user.email}?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      The account will be suspended immediately. Their data is preserved and the account can be reactivated at any time.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction
-                      onClick={handleDeactivate}
-                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                    >
-                      Deactivate
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            )}
-
             {/* Reactivate */}
-            {canToggleActive && !user.isActive && (
+            {canToggleStatus && !user.isActive && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -272,13 +300,14 @@ export default function UserManagement({ users, currentUserId, currentUserRole }
               <TableHead>Role</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Joined</TableHead>
+              <TableHead>Projects</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
                   No users found.
                 </TableCell>
               </TableRow>

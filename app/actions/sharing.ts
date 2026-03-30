@@ -1,8 +1,14 @@
 "use server";
 
+import { ActivityAction, NoteType } from "@prisma/client";
+
 import { auth }                 from "@/auth";
+import { logActivity }          from "@/lib/activity-log";
 import { prisma }               from "@/lib/prisma";
 import { canUserPerformAction } from "@/lib/permissions";
+import { assertActiveVaultSession } from "@/lib/session-guards";
+import { assertModeratorAssignedToProject } from "@/lib/project-scope-guards";
+import { vaultWhereActive } from "@/lib/vault-entity-status";
 
 export type SharingResult =
   | { success: true }
@@ -14,13 +20,14 @@ export type SharingResult =
 
 async function requireEditor() {
   const session = await auth();
-  if (!session?.user) return { actor: null, error: "Unauthorized." };
+  const vault = assertActiveVaultSession(session);
+  if (!vault.ok) return { actor: null, error: vault.error };
 
-  const actor = { id: session.user.id, role: session.user.role };
+  const actor = { id: vault.user.id, role: vault.user.role };
   const canEdit = canUserPerformAction(actor, null, "secret", "update");
   if (!canEdit) return { actor: null, error: "Only Moderators and above can manage access." };
 
-  return { actor, error: null };
+  return { actor, error: null as string | null };
 }
 
 // ---------------------------------------------------------------------------
@@ -31,11 +38,17 @@ export async function addUserToSecret(
   secretId: string,
   userId: string,
 ): Promise<SharingResult> {
-  const { error } = await requireEditor();
-  if (error) return { success: false, error };
+  const { actor, error } = await requireEditor();
+  if (error || !actor) return { success: false, error: error ?? "Unauthorized." };
 
-  const secret = await prisma.secret.findUnique({ where: { id: secretId }, select: { id: true } });
+  const secret = await prisma.secret.findFirst({
+    where:  { id: secretId, project: { is: vaultWhereActive } },
+    select: { id: true, projectId: true },
+  });
   if (!secret) return { success: false, error: "Secret not found." };
+
+  const scope = await assertModeratorAssignedToProject(actor, secret.projectId);
+  if (!scope.ok) return { success: false, error: scope.error };
 
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
   if (!user) return { success: false, error: "User not found." };
@@ -45,6 +58,14 @@ export async function addUserToSecret(
     data:  { sharedWith: { connect: { id: userId } } },
   });
 
+  await logActivity({
+    actorId:    actor.id,
+    action:     ActivityAction.ASSIGN,
+    entityType: "sharing_secret",
+    entityId:   secretId,
+    label:      `Granted access to user ${userId}`,
+  });
+
   return { success: true };
 }
 
@@ -52,12 +73,29 @@ export async function removeUserFromSecret(
   secretId: string,
   userId: string,
 ): Promise<SharingResult> {
-  const { error } = await requireEditor();
-  if (error) return { success: false, error };
+  const { actor, error } = await requireEditor();
+  if (error || !actor) return { success: false, error: error ?? "Unauthorized." };
+
+  const secret = await prisma.secret.findFirst({
+    where:  { id: secretId, project: { is: vaultWhereActive } },
+    select: { id: true, projectId: true },
+  });
+  if (!secret) return { success: false, error: "Secret not found." };
+
+  const scope = await assertModeratorAssignedToProject(actor, secret.projectId);
+  if (!scope.ok) return { success: false, error: scope.error };
 
   await prisma.secret.update({
     where: { id: secretId },
     data:  { sharedWith: { disconnect: { id: userId } } },
+  });
+
+  await logActivity({
+    actorId:    actor.id,
+    action:     ActivityAction.REMOVE,
+    entityType: "sharing_secret",
+    entityId:   secretId,
+    label:      `Revoked access for user ${userId}`,
   });
 
   return { success: true };
@@ -71,11 +109,19 @@ export async function addUserToNote(
   noteId: string,
   userId: string,
 ): Promise<SharingResult> {
-  const { error } = await requireEditor();
-  if (error) return { success: false, error };
+  const { actor, error } = await requireEditor();
+  if (error || !actor) return { success: false, error: error ?? "Unauthorized." };
 
-  const note = await prisma.note.findUnique({ where: { id: noteId }, select: { id: true } });
+  const note = await prisma.note.findFirst({
+    where:  { id: noteId, ...vaultWhereActive },
+    select: { id: true, type: true, projectId: true },
+  });
   if (!note) return { success: false, error: "Note not found." };
+
+  if (note.type === NoteType.PROJECT_BASED && note.projectId) {
+    const scope = await assertModeratorAssignedToProject(actor, note.projectId);
+    if (!scope.ok) return { success: false, error: scope.error };
+  }
 
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
   if (!user) return { success: false, error: "User not found." };
@@ -85,6 +131,14 @@ export async function addUserToNote(
     data:  { sharedWith: { connect: { id: userId } } },
   });
 
+  await logActivity({
+    actorId:    actor.id,
+    action:     ActivityAction.ASSIGN,
+    entityType: "sharing_note",
+    entityId:   noteId,
+    label:      `Granted access to user ${userId}`,
+  });
+
   return { success: true };
 }
 
@@ -92,12 +146,31 @@ export async function removeUserFromNote(
   noteId: string,
   userId: string,
 ): Promise<SharingResult> {
-  const { error } = await requireEditor();
-  if (error) return { success: false, error };
+  const { actor, error } = await requireEditor();
+  if (error || !actor) return { success: false, error: error ?? "Unauthorized." };
+
+  const note = await prisma.note.findFirst({
+    where:  { id: noteId, ...vaultWhereActive },
+    select: { id: true, type: true, projectId: true },
+  });
+  if (!note) return { success: false, error: "Note not found." };
+
+  if (note.type === NoteType.PROJECT_BASED && note.projectId) {
+    const scope = await assertModeratorAssignedToProject(actor, note.projectId);
+    if (!scope.ok) return { success: false, error: scope.error };
+  }
 
   await prisma.note.update({
     where: { id: noteId },
     data:  { sharedWith: { disconnect: { id: userId } } },
+  });
+
+  await logActivity({
+    actorId:    actor.id,
+    action:     ActivityAction.REMOVE,
+    entityType: "sharing_note",
+    entityId:   noteId,
+    label:      `Revoked access for user ${userId}`,
   });
 
   return { success: true };

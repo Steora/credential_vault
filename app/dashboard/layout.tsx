@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import AppSidebar from "@/components/dashboard/AppSidebar";
+import InactiveAccountShell from "@/components/dashboard/InactiveAccountShell";
 
 export default async function DashboardLayout({
   children,
@@ -13,6 +14,10 @@ export default async function DashboardLayout({
   // The middleware handles the redirect for unauthenticated users,
   // but we guard here too so the layout never renders without a session.
   if (!session?.user) redirect("/login");
+
+  if (session.user.isActive === false) {
+    return <InactiveAccountShell />;
+  }
 
   const user = {
     id:    session.user.id,

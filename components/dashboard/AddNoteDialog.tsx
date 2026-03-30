@@ -49,7 +49,11 @@ export default function AddNoteDialog({ projectId, projectName }: Props) {
       });
 
       if (result.success) {
-        toast.success("Note created.");
+        if (result.pendingApproval) {
+          toast.success("Request submitted. An admin will review your note before it appears.");
+        } else {
+          toast.success("Note created.");
+        }
         resetAndClose();
         router.refresh();
       } else {

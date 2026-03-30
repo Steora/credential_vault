@@ -1,11 +1,20 @@
 "use server";
 
 import { z } from "zod";
+import { ActivityAction, Role } from "@prisma/client";
 
 import { auth } from "@/auth";
+import { logActivity } from "@/lib/activity-log";
 import { prisma } from "@/lib/prisma";
+import { assertActiveVaultSession } from "@/lib/session-guards";
 import { encryptValue } from "@/lib/crypto";
 import { canUserPerformAction } from "@/lib/permissions";
+import { sendPendingApprovalNotificationEmail } from "@/lib/email";
+import {
+  assertModeratorAssignedToProject,
+  assertUserInternAssignedToProject,
+} from "@/lib/project-scope-guards";
+import { vaultWhereActive } from "@/lib/vault-entity-status";
 import type { EnvPair } from "@/lib/env-parser";
 
 // ---------------------------------------------------------------------------
@@ -28,7 +37,7 @@ export type SaveSecretInput = z.infer<typeof SaveSecretSchema>;
 // ---------------------------------------------------------------------------
 
 export type SaveSecretResult =
-  | { success: true;  data: { id: string } }
+  | { success: true; data: { id: string }; pendingApproval?: boolean }
   | { success: false; error: string };
 
 // ---------------------------------------------------------------------------
@@ -51,9 +60,9 @@ export async function saveSecret(
   // 1. Authentication — reject unauthenticated callers immediately.
   // ------------------------------------------------------------------
   const session = await auth();
-
-  if (!session?.user) {
-    return { success: false, error: "Unauthorized. Please sign in." };
+  const vault = assertActiveVaultSession(session);
+  if (!vault.ok) {
+    return { success: false, error: vault.error };
   }
 
   // ------------------------------------------------------------------
@@ -73,50 +82,91 @@ export async function saveSecret(
 
   const { key, value, projectId } = parsed.data;
 
-  // ------------------------------------------------------------------
-  // 3. Authorisation — MODERATOR and above may create secrets.
-  // ------------------------------------------------------------------
-  const actor = { id: session.user.id, role: session.user.role };
+  const actor = { id: vault.user.id, role: vault.user.role };
 
-  if (!canUserPerformAction(actor, null, "secret", "create")) {
-    return {
-      success: false,
-      error: `Role "${session.user.role}" is not permitted to create secrets.`,
-    };
+  if (actor.role === Role.INTERN) {
+    return { success: false, error: "Interns cannot add secrets." };
   }
 
-  // ------------------------------------------------------------------
-  // 4. Verify the project exists before doing any crypto work.
-  // ------------------------------------------------------------------
-  const project = await prisma.project.findUnique({
-    where:  { id: projectId },
-    select: { id: true },
+  const project = await prisma.project.findFirst({
+    where:  { id: projectId, ...vaultWhereActive },
+    select: { id: true, name: true },
   });
 
   if (!project) {
     return { success: false, error: `Project "${projectId}" not found.` };
   }
 
-  // ------------------------------------------------------------------
-  // 5. Encrypt — uses AES-256-GCM via lib/crypto.ts.
-  //    encryptValue returns { encryptedValue, iv } which maps directly to
-  //    the Secret model's columns.
-  // ------------------------------------------------------------------
+  // USER — submit for admin approval (not added to vault until approved).
+  if (actor.role === Role.USER) {
+    const scope = await assertUserInternAssignedToProject(actor, projectId);
+    if (!scope.ok) return { success: false, error: scope.error };
+
+    const { encryptedValue, iv } = encryptValue(value);
+
+    const pending = await prisma.pendingSecretSubmission.create({
+      data: {
+        submitterId: actor.id,
+        projectId,
+        key,
+        encryptedValue,
+        iv,
+      },
+      select: { id: true },
+    });
+
+    await logActivity({
+      actorId:    vault.user.id,
+      action:     ActivityAction.CREATE,
+      entityType: "pending_secret",
+      entityId:   pending.id,
+      label:      `${project.name} — ${key}`,
+    });
+
+    const admins = await prisma.user.findMany({
+      where: { isActive: true, role: { in: [Role.ADMIN, Role.SUPERADMIN] } },
+      select: { email: true },
+    });
+
+    await sendPendingApprovalNotificationEmail({
+      toAddresses:    admins.map((a) => a.email),
+      kind:           "secret",
+      summaryLine:    `Project: ${project.name} — key: ${key}`,
+      submitterLabel: vault.user.email ?? vault.user.id,
+    }).catch(() => {});
+
+    return { success: true, data: { id: pending.id }, pendingApproval: true };
+  }
+
+  if (!canUserPerformAction(actor, null, "secret", "create")) {
+    return {
+      success: false,
+      error: `Role "${vault.user.role}" is not permitted to create secrets.`,
+    };
+  }
+
+  const scope = await assertModeratorAssignedToProject(actor, projectId);
+  if (!scope.ok) return { success: false, error: scope.error };
+
   const { encryptedValue, iv } = encryptValue(value);
 
-  // ------------------------------------------------------------------
-  // 6. Persist — only the owner ID, project link, and ciphertext are stored.
-  //    The plaintext never touches the database.
-  // ------------------------------------------------------------------
   const secret = await prisma.secret.create({
     data: {
       key,
       encryptedValue,
       iv,
       projectId,
-      ownerId: session.user.id,
+      ownerId: vault.user.id,
     },
     select: { id: true },
+  });
+
+  await logActivity({
+    actorId:    vault.user.id,
+    action:     ActivityAction.CREATE,
+    entityType: "secret",
+    entityId:   secret.id,
+    label:      key,
   });
 
   return { success: true, data: { id: secret.id } };
@@ -127,7 +177,8 @@ export async function saveSecret(
 // ---------------------------------------------------------------------------
 
 export type SecretImportOutcome =
-  | { key: string; status: "saved";  id: string }
+  | { key: string; status: "saved"; id: string }
+  | { key: string; status: "pending"; id: string }
   | { key: string; status: "failed"; error: string };
 
 export type SaveSecretsFromEnvResult =
@@ -153,20 +204,21 @@ export async function saveSecretsFromEnv(
   // 1. Auth
   // ------------------------------------------------------------------
   const session = await auth();
-  if (!session?.user) {
-    return { success: false, error: "Unauthorized. Please sign in." };
+  const vault = assertActiveVaultSession(session);
+  if (!vault.ok) {
+    return { success: false, error: vault.error };
   }
 
   // ------------------------------------------------------------------
   // 2. Permission
   // ------------------------------------------------------------------
-  const actor = { id: session.user.id, role: session.user.role };
-  if (!canUserPerformAction(actor, null, "secret", "create")) {
-    return {
-      success: false,
-      error: `Role "${session.user.role}" is not permitted to create secrets.`,
-    };
+  const actor = { id: vault.user.id, role: vault.user.role };
+
+  if (actor.role === Role.INTERN) {
+    return { success: false, error: "Interns cannot add secrets." };
   }
+
+  const isUserPending = actor.role === Role.USER;
 
   // ------------------------------------------------------------------
   // 3. Basic input guards
@@ -183,12 +235,27 @@ export async function saveSecretsFromEnv(
   // ------------------------------------------------------------------
   // 4. Project existence
   // ------------------------------------------------------------------
-  const project = await prisma.project.findUnique({
-    where:  { id: trimmedProjectId },
-    select: { id: true },
+  const project = await prisma.project.findFirst({
+    where:  { id: trimmedProjectId, ...vaultWhereActive },
+    select: { id: true, name: true },
   });
   if (!project) {
     return { success: false, error: `Project "${trimmedProjectId}" not found.` };
+  }
+
+  if (isUserPending) {
+    const scope = await assertUserInternAssignedToProject(actor, trimmedProjectId);
+    if (!scope.ok) return { success: false, error: scope.error };
+  } else {
+    if (!canUserPerformAction(actor, null, "secret", "create")) {
+      return {
+        success: false,
+        error: `Role "${vault.user.role}" is not permitted to create secrets.`,
+      };
+    }
+
+    const scope = await assertModeratorAssignedToProject(actor, trimmedProjectId);
+    if (!scope.ok) return { success: false, error: scope.error };
   }
 
   // ------------------------------------------------------------------
@@ -229,25 +296,81 @@ export async function saveSecretsFromEnv(
   // 6. Persist all successfully encrypted rows in one transaction.
   // ------------------------------------------------------------------
   if (ready.length > 0) {
-    const ownerId = session.user.id;
+    const submitterId = vault.user.id;
 
-    const created = await prisma.$transaction(
-      ready.map((row) =>
-        prisma.secret.create({
-          data: {
-            key:            row.key,
-            encryptedValue: row.encryptedValue,
-            iv:             row.iv,
-            projectId:      trimmedProjectId,
-            ownerId,
-          },
-          select: { id: true, key: true },
-        }),
-      ),
-    );
+    if (isUserPending) {
+      const created = await prisma.$transaction(async (tx) => {
+        const rows: { id: string; key: string }[] = [];
+        for (const row of ready) {
+          const pending = await tx.pendingSecretSubmission.create({
+            data: {
+              submitterId,
+              projectId: trimmedProjectId,
+              key: row.key,
+              encryptedValue: row.encryptedValue,
+              iv: row.iv,
+            },
+            select: { id: true, key: true },
+          });
+          rows.push(pending);
+        }
+        return rows;
+      });
 
-    for (const row of created) {
-      outcomes.push({ key: row.key, status: "saved", id: row.id });
+      for (const row of created) {
+        outcomes.push({ key: row.key, status: "pending", id: row.id });
+      }
+
+      // Notify admins (single email for the batch).
+      const admins = await prisma.user.findMany({
+        where: { isActive: true, role: { in: [Role.ADMIN, Role.SUPERADMIN] } },
+        select: { email: true },
+      });
+
+      await sendPendingApprovalNotificationEmail({
+        toAddresses: admins.map((a) => a.email),
+        kind: "secret",
+        summaryLine: `Project: ${project.name} — ${created.length} secret(s) pending approval`,
+        submitterLabel: vault.user.email ?? vault.user.id,
+      }).catch(() => {});
+
+      // Activity — log each pending row so the exact ids can be referenced later.
+      for (const row of created) {
+        await logActivity({
+          actorId: submitterId,
+          action: ActivityAction.CREATE,
+          entityType: "pending_secret",
+          entityId: row.id,
+          label: row.key,
+        });
+      }
+    } else {
+      const created = await prisma.$transaction(
+        ready.map((row) =>
+          prisma.secret.create({
+            data: {
+              key: row.key,
+              encryptedValue: row.encryptedValue,
+              iv: row.iv,
+              projectId: trimmedProjectId,
+              ownerId: submitterId,
+            },
+            select: { id: true, key: true },
+          }),
+        ),
+      );
+
+      for (const row of created) {
+        outcomes.push({ key: row.key, status: "saved", id: row.id });
+      }
+
+      await logActivity({
+        actorId: submitterId,
+        action: ActivityAction.CREATE,
+        entityType: "secret",
+        entityId: trimmedProjectId,
+        label: `Imported ${created.length} secret(s) from .env`,
+      });
     }
   }
 
@@ -278,7 +401,8 @@ export async function updateSecret(
   rawInput: UpdateSecretInput,
 ): Promise<UpdateSecretResult> {
   const session = await auth();
-  if (!session?.user) return { success: false, error: "Unauthorized. Please sign in." };
+  const vault = assertActiveVaultSession(session);
+  if (!vault.ok) return { success: false, error: vault.error };
 
   const parsed = UpdateSecretSchema.safeParse({
     secretId: rawInput.secretId?.trim(),
@@ -291,26 +415,37 @@ export async function updateSecret(
   }
 
   const { secretId, key, value } = parsed.data;
-  const actor = { id: session.user.id, role: session.user.role };
+  const actor = { id: vault.user.id, role: vault.user.role };
 
   if (!canUserPerformAction(actor, null, "secret", "update")) {
     return {
       success: false,
-      error: `Role "${session.user.role}" is not permitted to edit secrets.`,
+      error: `Role "${vault.user.role}" is not permitted to edit secrets.`,
     };
   }
 
-  const existing = await prisma.secret.findUnique({
-    where:  { id: secretId },
-    select: { id: true },
+  const existing = await prisma.secret.findFirst({
+    where:  { id: secretId, project: { is: vaultWhereActive } },
+    select: { id: true, projectId: true },
   });
   if (!existing) return { success: false, error: "Secret not found." };
+
+  const scope = await assertModeratorAssignedToProject(actor, existing.projectId);
+  if (!scope.ok) return { success: false, error: scope.error };
 
   const { encryptedValue, iv } = encryptValue(value);
 
   await prisma.secret.update({
     where: { id: secretId },
     data:  { key, encryptedValue, iv },
+  });
+
+  await logActivity({
+    actorId:    vault.user.id,
+    action:     ActivityAction.UPDATE,
+    entityType: "secret",
+    entityId:   secretId,
+    label:      key,
   });
 
   return { success: true };
@@ -330,22 +465,35 @@ export type DeleteSecretResult =
  */
 export async function deleteSecret(secretId: string): Promise<DeleteSecretResult> {
   const session = await auth();
-  if (!session?.user) return { success: false, error: "Unauthorized." };
+  const vault = assertActiveVaultSession(session);
+  if (!vault.ok) return { success: false, error: vault.error };
 
-  const actor = { id: session.user.id, role: session.user.role };
+  const actor = { id: vault.user.id, role: vault.user.role };
   if (!canUserPerformAction(actor, null, "secret", "delete")) {
     return {
       success: false,
-      error: `Role "${session.user.role}" is not permitted to delete secrets.`,
+      error: `Role "${vault.user.role}" is not permitted to delete secrets.`,
     };
   }
 
-  const secret = await prisma.secret.findUnique({
-    where:  { id: secretId },
-    select: { id: true },
+  const secret = await prisma.secret.findFirst({
+    where:  { id: secretId, project: { is: vaultWhereActive } },
+    select: { id: true, projectId: true, key: true },
   });
   if (!secret) return { success: false, error: "Secret not found." };
 
+  const scope = await assertModeratorAssignedToProject(actor, secret.projectId);
+  if (!scope.ok) return { success: false, error: scope.error };
+
   await prisma.secret.delete({ where: { id: secretId } });
+
+  await logActivity({
+    actorId:    vault.user.id,
+    action:     ActivityAction.DELETE,
+    entityType: "secret",
+    entityId:   secretId,
+    label:      secret.key,
+  });
+
   return { success: true };
 }

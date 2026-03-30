@@ -3,10 +3,9 @@
  *
  * Access-controlled server-side queries for the Secret model.
  *
- * Every function enforces the 3-condition rule from lib/queries/access.ts:
- *   1. SUPERADMIN          → unrestricted
- *   2. MODERATOR or above  → unrestricted (role-based access)
- *   3. USER / INTERN       → owner OR explicitly in sharedWith (allowedUserIds)
+ *   1. ADMIN / SUPERADMIN → all projects, all secrets.
+ *   2. MODERATOR          → secrets in expanded tree from any `ProjectMember` assignment.
+ *   3. USER / INTERN      → direct assignments + parent chain + (owner OR sharedWith); not siblings.
  *
  * The `encryptedValue` and `iv` columns are intentionally excluded from list
  * queries (getSecretsByProject) — they are only included in the single-record
@@ -14,9 +13,17 @@
  * needs the ciphertext.
  */
 
-import { prisma }             from "@/lib/prisma";
-import { decryptValue }       from "@/lib/crypto";
-import { hasBroadAccess, allowedAccessWhere, type QueryActor } from "./access";
+import { Role }           from "@prisma/client";
+import { prisma }         from "@/lib/prisma";
+import { decryptValue }   from "@/lib/crypto";
+import { projectWhereForVaultRead } from "@/lib/vault-entity-status";
+import {
+  allowedAccessWhere,
+  getVaultProjectIdsForActor,
+  hasUnrestrictedProjectScope,
+  isActorContentBlocked,
+  type QueryActor,
+} from "./access";
 
 // ---------------------------------------------------------------------------
 // Shared select shapes
@@ -51,9 +58,25 @@ const FULL_SELECT = {
  * Ciphertext is excluded — use `getSecretById` when you need to decrypt.
  */
 export async function getSecretsByProject(projectId: string, actor: QueryActor) {
-  const baseWhere = { projectId };
+  if (isActorContentBlocked(actor)) return [];
 
-  if (hasBroadAccess(actor.role)) {
+  const baseWhere = {
+    projectId,
+    project: { is: projectWhereForVaultRead(actor) },
+  };
+
+  if (hasUnrestrictedProjectScope(actor.role)) {
+    return prisma.secret.findMany({
+      where:   baseWhere,
+      select:  LIST_SELECT,
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  const scope = await getVaultProjectIdsForActor(actor);
+  if (!scope.includes(projectId)) return [];
+
+  if (actor.role === Role.MODERATOR) {
     return prisma.secret.findMany({
       where:   baseWhere,
       select:  LIST_SELECT,
@@ -62,7 +85,9 @@ export async function getSecretsByProject(projectId: string, actor: QueryActor) 
   }
 
   return prisma.secret.findMany({
-    where:   { ...baseWhere, ...allowedAccessWhere(actor) },
+    where: {
+      AND: [baseWhere, allowedAccessWhere(actor)],
+    },
     select:  LIST_SELECT,
     orderBy: { createdAt: "desc" },
   });
@@ -73,12 +98,34 @@ export async function getSecretsByProject(projectId: string, actor: QueryActor) 
  * Returns `null` when the record does not exist or the actor has no access.
  */
 export async function getSecretById(id: string, actor: QueryActor) {
-  if (hasBroadAccess(actor.role)) {
-    return prisma.secret.findUnique({ where: { id }, select: FULL_SELECT });
+  if (isActorContentBlocked(actor)) return null;
+
+  const projectRead = projectWhereForVaultRead(actor);
+
+  if (hasUnrestrictedProjectScope(actor.role)) {
+    return prisma.secret.findFirst({
+      where:  { id, project: { is: projectRead } },
+      select: FULL_SELECT,
+    });
+  }
+
+  const scope = await getVaultProjectIdsForActor(actor);
+  if (scope.length === 0) return null;
+
+  if (actor.role === Role.MODERATOR) {
+    return prisma.secret.findFirst({
+      where:   { id, projectId: { in: scope }, project: { is: projectRead } },
+      select:  FULL_SELECT,
+    });
   }
 
   return prisma.secret.findFirst({
-    where:  { id, ...allowedAccessWhere(actor) },
+    where: {
+      AND: [
+        { id, projectId: { in: scope }, project: { is: projectRead } },
+        allowedAccessWhere(actor),
+      ],
+    },
     select: FULL_SELECT,
   });
 }
@@ -107,19 +154,37 @@ export async function getDecryptedSecretsByProject(
   projectId: string,
   actor: QueryActor,
 ): Promise<{ key: string; plaintext: string }[]> {
-  const baseWhere = { projectId };
+  if (isActorContentBlocked(actor)) return [];
 
-  const secrets = await (hasBroadAccess(actor.role)
+  const baseWhere = {
+    projectId,
+    project: { is: projectWhereForVaultRead(actor) },
+  };
+
+  const secrets = await (hasUnrestrictedProjectScope(actor.role)
     ? prisma.secret.findMany({
         where:   baseWhere,
         select:  FULL_SELECT,
         orderBy: { key: "asc" },
       })
-    : prisma.secret.findMany({
-        where:   { ...baseWhere, ...allowedAccessWhere(actor) },
-        select:  FULL_SELECT,
-        orderBy: { key: "asc" },
-      })
+    : (async () => {
+        const scope = await getVaultProjectIdsForActor(actor);
+        if (!scope.includes(projectId)) return [];
+        if (actor.role === Role.MODERATOR) {
+          return prisma.secret.findMany({
+            where:   baseWhere,
+            select:  FULL_SELECT,
+            orderBy: { key: "asc" },
+          });
+        }
+        return prisma.secret.findMany({
+          where: {
+            AND: [baseWhere, allowedAccessWhere(actor)],
+          },
+          select:  FULL_SELECT,
+          orderBy: { key: "asc" },
+        });
+      })()
   );
 
   return secrets.map((s) => ({
@@ -133,16 +198,110 @@ export async function getDecryptedSecretsByProject(
  * across all projects. Ciphertext excluded.
  */
 export async function getAccessibleSecrets(actor: QueryActor) {
-  if (hasBroadAccess(actor.role)) {
+  if (isActorContentBlocked(actor)) return [];
+
+  const projectRead = projectWhereForVaultRead(actor);
+
+  if (hasUnrestrictedProjectScope(actor.role)) {
     return prisma.secret.findMany({
+      where:   { project: { is: projectRead } },
+      select:  LIST_SELECT,
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  const scope = await getVaultProjectIdsForActor(actor);
+  if (scope.length === 0) return [];
+
+  if (actor.role === Role.MODERATOR) {
+    return prisma.secret.findMany({
+      where:   { projectId: { in: scope }, project: { is: projectRead } },
       select:  LIST_SELECT,
       orderBy: { createdAt: "desc" },
     });
   }
 
   return prisma.secret.findMany({
-    where:   allowedAccessWhere(actor),
+    where: {
+      AND: [
+        { projectId: { in: scope }, project: { is: projectRead } },
+        allowedAccessWhere(actor),
+      ],
+    },
     select:  LIST_SELECT,
     orderBy: { createdAt: "desc" },
   });
+}
+
+const DASHBOARD_RECENT_SELECT = {
+  id:      true,
+  key:     true,
+  project: { select: { name: true } },
+} as const;
+
+export type RecentDashboardSecretsResult = {
+  items: Array<{
+    id: string;
+    key: string;
+    project: { name: string };
+  }>;
+  /** USER/INTERN with zero ProjectMember rows — must not see or copy any vault secrets on Overview. */
+  showAssignmentRequired: boolean;
+};
+
+/**
+ * Recent secrets for the dashboard Overview.
+ * USER/INTERN only see secrets in projects they are assigned to (ProjectMember), and only when
+ * they pass the usual owner/sharedWith rule. No project assignment ⇒ empty list (no Copy).
+ */
+export async function getRecentDashboardSecrets(actor: QueryActor): Promise<RecentDashboardSecretsResult> {
+  if (isActorContentBlocked(actor)) {
+    return { items: [], showAssignmentRequired: false };
+  }
+
+  const projectRead = projectWhereForVaultRead(actor);
+
+  if (hasUnrestrictedProjectScope(actor.role)) {
+    const items = await prisma.secret.findMany({
+      where:   { project: { is: projectRead } },
+      take:    8,
+      orderBy: { createdAt: "desc" },
+      select:  DASHBOARD_RECENT_SELECT,
+    });
+    return { items, showAssignmentRequired: false };
+  }
+
+  const projectIds = await getVaultProjectIdsForActor(actor);
+
+  if (projectIds.length === 0) {
+    return { items: [], showAssignmentRequired: true };
+  }
+
+  const items =
+    actor.role === Role.MODERATOR
+      ? await prisma.secret.findMany({
+          where: {
+            projectId: { in: projectIds },
+            project:   { is: projectRead },
+          },
+          take:    8,
+          orderBy: { createdAt: "desc" },
+          select:  DASHBOARD_RECENT_SELECT,
+        })
+      : await prisma.secret.findMany({
+          where: {
+            AND: [
+              {
+                projectId: { in: projectIds },
+                project:   { is: projectRead },
+              },
+              allowedAccessWhere(actor),
+            ],
+          },
+          take:    8,
+          orderBy: { createdAt: "desc" },
+          select:  DASHBOARD_RECENT_SELECT,
+        });
+
+  return { items, showAssignmentRequired: false };
 }

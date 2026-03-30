@@ -5,9 +5,36 @@ if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL environment variable is not set.");
 }
 
+/**
+ * Bump this when you add/change Prisma models so `next dev` does not keep an
+ * old PrismaClient instance missing new delegates (e.g. `projectMember`).
+ */
+const PRISMA_SCHEMA_REVISION = 12;
+
 const globalForPrisma = globalThis as unknown as {
   prisma: ReturnType<typeof buildPrismaClient> | undefined;
+  prismaSchemaRevision: number | undefined;
 };
+
+// Turbopack HMR can keep a stale Prisma client missing new model delegates.
+// In development, prefer correctness over reusing a singleton.
+if (process.env.NODE_ENV === "development") {
+  globalForPrisma.prisma = undefined;
+  globalForPrisma.prismaSchemaRevision = undefined;
+}
+
+function isDateLike(value: unknown): boolean {
+  return (
+    value instanceof Date ||
+    Object.prototype.toString.call(value) === "[object Date]"
+  );
+}
+
+/** Only JSON-style objects; avoids treating Date / Decimal / Buffer as `{}`. */
+function isPlainObject(value: object): boolean {
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
 
 /**
  * Recursively walks a `data` object and trims every string value in-place.
@@ -17,18 +44,20 @@ const globalForPrisma = globalThis as unknown as {
 function trimStrings(data: unknown): unknown {
   if (typeof data === "string") return data.trim();
 
+  if (data === null || typeof data !== "object") return data;
+
+  if (isDateLike(data)) return data;
+
   if (Array.isArray(data)) return data.map(trimStrings);
 
-  if (data !== null && typeof data === "object") {
-    return Object.fromEntries(
-      Object.entries(data as Record<string, unknown>).map(([key, value]) => [
-        key,
-        trimStrings(value),
-      ])
-    );
-  }
+  if (!isPlainObject(data)) return data;
 
-  return data;
+  return Object.fromEntries(
+    Object.entries(data as Record<string, unknown>).map(([key, value]) => [
+      key,
+      trimStrings(value),
+    ])
+  );
 }
 
 function buildPrismaClient() {
@@ -79,6 +108,55 @@ function buildPrismaClient() {
   });
 }
 
-export const prisma = globalForPrisma.prisma ?? buildPrismaClient();
+function clientHasExpectedDelegates(client: unknown): boolean {
+  const c = client as {
+    activityLog?: { findMany?: unknown; deleteMany?: unknown };
+    userInvitation?: { findMany?: unknown; deleteMany?: unknown };
+    pendingSecretSubmission?: { findMany?: unknown };
+  };
+  return (
+    typeof c.activityLog?.findMany === "function" &&
+    typeof c.userInvitation?.findMany === "function" &&
+    typeof c.userInvitation?.deleteMany === "function" &&
+    typeof c.pendingSecretSubmission?.findMany === "function"
+  );
+}
 
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+function getClient() {
+  let stale =
+    globalForPrisma.prismaSchemaRevision !== PRISMA_SCHEMA_REVISION ||
+    !globalForPrisma.prisma;
+
+  // Revision matched but singleton was built before `prisma generate` (e.g. new model) — drop cache.
+  if (!stale && globalForPrisma.prisma && !clientHasExpectedDelegates(globalForPrisma.prisma)) {
+    stale = true;
+    globalForPrisma.prisma = undefined;
+    globalForPrisma.prismaSchemaRevision = undefined;
+  }
+
+  if (!stale) return globalForPrisma.prisma!;
+
+  const client = buildPrismaClient();
+  globalForPrisma.prisma = client;
+  globalForPrisma.prismaSchemaRevision = PRISMA_SCHEMA_REVISION;
+  return client;
+}
+
+type ExtendedPrisma = ReturnType<typeof buildPrismaClient>;
+
+/**
+ * Proxy so every access runs {@link getClient} — fixes Turbopack HMR keeping a stale
+ * `export const prisma` from before `prisma generate` (missing new model delegates).
+ */
+export const prisma = new Proxy({} as ExtendedPrisma, {
+  get(_target, prop) {
+    const client = getClient();
+    // Third arg must be `client`, not the Proxy — Prisma model delegates are getters
+    // that expect the real PrismaClient as `this`; wrong receiver yields undefined.
+    const value = Reflect.get(client, prop, client);
+    if (typeof value === "function") {
+      return value.bind(client);
+    }
+    return value;
+  },
+});

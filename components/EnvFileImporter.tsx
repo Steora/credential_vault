@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useRef, useState, useTransition } from "react";
 import { parseEnvText, type EnvPair } from "@/lib/env-parser";
 import { saveSecretsFromEnv, type SecretImportOutcome } from "@/app/actions/secrets";
+import { toast } from "sonner";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -36,6 +37,36 @@ function StatusBadge({ outcome }: { outcome: SecretImportOutcome }) {
           <path d="M10 3L5 8.5 2 5.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
         </svg>
         Saved
+      </span>
+    );
+  }
+  if (outcome.status === "pending") {
+    return (
+      <span
+        className="inline-flex max-w-xs items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800"
+        title="Submitted for admin approval"
+      >
+        <svg className="h-3 w-3 shrink-0" viewBox="0 0 12 12" fill="none">
+          <path
+            d="M6 1.5l3.5 6.1H2.5L6 1.5z"
+            stroke="currentColor"
+            strokeWidth="1.1"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M6 5.3v2.2"
+            stroke="currentColor"
+            strokeWidth="1.1"
+            strokeLinecap="round"
+          />
+          <path
+            d="M6 9.1h.01"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+          />
+        </svg>
+        Pending approval
       </span>
     );
   }
@@ -151,7 +182,18 @@ export default function EnvFileImporter({ projectId, projectName, onImportSucces
       setImportStatus("done");
 
       const savedCount = result.outcomes.filter((o) => o.status === "saved").length;
+      const pendingCount = result.outcomes.filter((o) => o.status === "pending").length;
+
       if (savedCount > 0) {
+        toast.success(`Saved ${savedCount} secret(s).`);
+      }
+      if (pendingCount > 0) {
+        toast.success(
+          `Submitted ${pendingCount} secret(s) for admin approval. They will appear after approval.`,
+        );
+      }
+
+      if (savedCount > 0 || pendingCount > 0) {
         onImportSuccess?.();
       }
     });

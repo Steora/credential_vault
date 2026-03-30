@@ -1,6 +1,8 @@
+import { Role } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { canUserPerformAction } from "@/lib/permissions";
+import { vaultWhereActive } from "@/lib/vault-entity-status";
 import NoteForm, { type ProjectOption } from "./NoteForm";
 
 interface NoteFormWrapperProps {
@@ -18,15 +20,18 @@ export default async function NoteFormWrapper({ onSuccess }: NoteFormWrapperProp
   const session = await auth();
 
   const canEdit = session?.user
-    ? canUserPerformAction(
+    ? session.user.isActive !== false &&
+      (canUserPerformAction(
         { id: session.user.id, role: session.user.role },
         null,
         "note",
         "create",
-      )
+      ) ||
+        session.user.role === Role.USER)
     : false;
 
   const projects: ProjectOption[] = await prisma.project.findMany({
+    where:   vaultWhereActive,
     select:  { id: true, name: true },
     orderBy: { name: "asc" },
   });

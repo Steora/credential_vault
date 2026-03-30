@@ -45,7 +45,8 @@ function rankOf(role: Role): number {
  *  - SUPERADMIN  → unrestricted access to everything.
  *  - ADMIN       → full CRUD on users whose role is below ADMIN (MODERATOR / USER / INTERN).
  *                  Full CRUD on secrets, notes, and projects.
- *  - MODERATOR   → full CRUD on secrets and notes. Read-only on users and projects.
+ *  - MODERATOR   → full CRUD on secrets and notes; create/archive projects (scoped in server actions).
+ *                  Read-only on users.
  *  - USER/INTERN → read-only on every resource type.
  *
  * When `target` is provided it represents the user being acted upon, allowing
@@ -115,9 +116,9 @@ function canActOnContent(actor: PermissionActor, action: Action): boolean {
 }
 
 function canActOnProject(actor: PermissionActor, action: Action): boolean {
-  // Only ADMINs and above may mutate projects.
-  if (rankOf(actor.role) >= rankOf(Role.ADMIN)) return true;
+  // MODERATOR and above may create/update projects; "delete" permission gates archiving (vault scope in actions).
+  if (rankOf(actor.role) >= rankOf(Role.MODERATOR)) return true;
 
-  // Everyone else is read-only.
+  // USER / INTERN — browse only.
   return action === "read";
 }

@@ -1,8 +1,10 @@
 "use server";
 
-import { Role } from "@prisma/client";
+import { ActivityAction, Role } from "@prisma/client";
 import { auth } from "@/auth";
+import { logActivity } from "@/lib/activity-log";
 import { prisma } from "@/lib/prisma";
+import { assertActiveVaultSession } from "@/lib/session-guards";
 
 // ---------------------------------------------------------------------------
 // Role rank — mirrors lib/permissions.ts but kept local to avoid the Edge
@@ -12,6 +14,8 @@ import { prisma } from "@/lib/prisma";
 const ROLE_RANK: Record<Role, number> = {
   INTERN: 0, USER: 1, MODERATOR: 2, ADMIN: 3, SUPERADMIN: 4,
 };
+
+const STATUS_PRIVILEGE_ROLES = new Set<Role>([Role.ADMIN, Role.SUPERADMIN]);
 
 export type UserActionResult =
   | { success: true }
@@ -35,13 +39,14 @@ export async function updateUserRole(
   newRole: Role,
 ): Promise<UserActionResult> {
   const session = await auth();
-  if (!session?.user) return { success: false, error: "Unauthorized." };
+  const vault = assertActiveVaultSession(session);
+  if (!vault.ok) return { success: false, error: vault.error };
 
-  const actor = session.user;
+  const actor = vault.user;
 
   const target = await prisma.user.findUnique({
     where:  { id: targetId },
-    select: { id: true, role: true },
+    select: { id: true, role: true, email: true },
   });
   if (!target) return { success: false, error: "User not found." };
 
@@ -66,6 +71,15 @@ export async function updateUserRole(
   }
 
   await prisma.user.update({ where: { id: targetId }, data: { role: newRole } });
+
+  await logActivity({
+    actorId:    actor.id,
+    action:     ActivityAction.UPDATE,
+    entityType: "user",
+    entityId:   targetId,
+    label:      `${target.email}: ${target.role} → ${newRole}`,
+  });
+
   return { success: true };
 }
 
@@ -75,20 +89,25 @@ export async function updateUserRole(
 
 /**
  * Deactivates a user account by setting isActive = false.
- * The user record and all their secrets/notes are preserved.
- * They will be blocked from signing in immediately.
+ * Clears all project sharing (Secret/Note sharedWith) so they lose access paths.
+ * They can still sign in but the vault layer hides all content until reactivated.
  *
- * Same rank-guard rules as hard delete apply here.
+ * Only ADMIN and SUPERADMIN may change status. Same rank-guard as role changes.
  */
 export async function deactivateUser(targetId: string): Promise<UserActionResult> {
   const session = await auth();
-  if (!session?.user) return { success: false, error: "Unauthorized." };
+  const vault = assertActiveVaultSession(session);
+  if (!vault.ok) return { success: false, error: vault.error };
 
-  const actor = session.user;
+  const actor = vault.user;
+
+  if (!STATUS_PRIVILEGE_ROLES.has(actor.role)) {
+    return { success: false, error: "Only Admins and Superadmins can change user status." };
+  }
 
   const target = await prisma.user.findUnique({
     where:  { id: targetId },
-    select: { id: true, role: true, isActive: true },
+    select: { id: true, role: true, isActive: true, email: true },
   });
   if (!target) return { success: false, error: "User not found." };
 
@@ -107,7 +126,23 @@ export async function deactivateUser(targetId: string): Promise<UserActionResult
     };
   }
 
-  await prisma.user.update({ where: { id: targetId }, data: { isActive: false } });
+  await prisma.user.update({
+    where: { id: targetId },
+    data: {
+      isActive:      false,
+      sharedSecrets: { set: [] },
+      sharedNotes:   { set: [] },
+    },
+  });
+
+  await logActivity({
+    actorId:    actor.id,
+    action:     ActivityAction.STATUS,
+    entityType: "user",
+    entityId:   targetId,
+    label:      `Deactivated ${target.email}`,
+  });
+
   return { success: true };
 }
 
@@ -121,13 +156,18 @@ export async function deactivateUser(targetId: string): Promise<UserActionResult
  */
 export async function reactivateUser(targetId: string): Promise<UserActionResult> {
   const session = await auth();
-  if (!session?.user) return { success: false, error: "Unauthorized." };
+  const vault = assertActiveVaultSession(session);
+  if (!vault.ok) return { success: false, error: vault.error };
 
-  const actor = session.user;
+  const actor = vault.user;
+
+  if (!STATUS_PRIVILEGE_ROLES.has(actor.role)) {
+    return { success: false, error: "Only Admins and Superadmins can change user status." };
+  }
 
   const target = await prisma.user.findUnique({
     where:  { id: targetId },
-    select: { id: true, role: true, isActive: true },
+    select: { id: true, role: true, isActive: true, email: true },
   });
   if (!target) return { success: false, error: "User not found." };
 
@@ -143,5 +183,14 @@ export async function reactivateUser(targetId: string): Promise<UserActionResult
   }
 
   await prisma.user.update({ where: { id: targetId }, data: { isActive: true } });
+
+  await logActivity({
+    actorId:    actor.id,
+    action:     ActivityAction.STATUS,
+    entityType: "user",
+    entityId:   targetId,
+    label:      `Reactivated ${target.email}`,
+  });
+
   return { success: true };
 }

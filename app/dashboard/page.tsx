@@ -1,99 +1,57 @@
-import { auth }                  from "@/auth";
-import { prisma }                from "@/lib/prisma";
-import { canUserPerformAction }  from "@/lib/permissions";
-import { Badge }                 from "@/components/ui/badge";
-import { Separator }             from "@/components/ui/separator";
-import CopyButton                from "@/components/CopyButton";
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { Role } from "@prisma/client";
+import { auth } from "@/auth";
+import { prisma } from "@/lib/prisma";
+import { VAULT_ENTITY_STATUS } from "@/lib/vault-entity-status";
 
-// ---------------------------------------------------------------------------
-// Stat card
-// ---------------------------------------------------------------------------
+const ELEVATED_ROLES = new Set<Role>([Role.SUPERADMIN, Role.ADMIN, Role.MODERATOR]);
 
-function StatCard({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-xl border bg-card p-5 shadow-sm">
-      <p className="text-sm text-muted-foreground">{label}</p>
-      <p className="mt-1 text-3xl font-bold tracking-tight">{value}</p>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Secret row
-// ---------------------------------------------------------------------------
-
-function SecretRow({
-  id,
-  secretKey,
-  projectName,
-  canCopy,
+function StatusCard({
+  href,
+  label,
+  value,
+  tone,
 }: {
-  id: string;
-  secretKey: string;
-  projectName: string;
-  canCopy: boolean;
+  href: string;
+  label: string;
+  value: number;
+  tone: "default" | "muted" | "danger";
 }) {
+  const border =
+    tone === "danger"
+      ? "border-destructive/30 bg-destructive/5"
+      : tone === "muted"
+        ? "border-muted-foreground/20 bg-muted/30"
+        : "border-border bg-card";
   return (
-    <div className="flex items-center justify-between gap-4 rounded-lg border bg-muted/30 px-4 py-3">
-      <div className="flex min-w-0 flex-col gap-0.5">
-        <span className="truncate font-mono text-sm font-medium">{secretKey}</span>
-        <span className="text-xs text-muted-foreground">{projectName}</span>
-      </div>
-      <div className="flex items-center gap-2">
-        <span className="font-mono text-xs text-muted-foreground tracking-widest select-none">
-          ••••••••••••
-        </span>
-        {canCopy ? (
-          <CopyButton secretId={id} />
-        ) : (
-          <Badge variant="outline" className="text-[10px]">No access</Badge>
-        )}
-      </div>
-    </div>
+    <Link
+      href={href}
+      className={`block rounded-xl border p-5 shadow-sm transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${border}`}
+    >
+      <p className="text-sm text-muted-foreground">{label}</p>
+      <p className="mt-1 text-3xl font-bold tracking-tight tabular-nums">{value}</p>
+    </Link>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Page
-// ---------------------------------------------------------------------------
 
 export default async function DashboardPage() {
   const session = await auth();
   if (!session?.user) return null;
 
-  const actor = { id: session.user.id, role: session.user.role };
-  const canReadSecrets = canUserPerformAction(actor, null, "secret", "read");
+  if (!ELEVATED_ROLES.has(session.user.role)) {
+    redirect("/dashboard/projects");
+  }
 
-  // Fetch counts
-  const [projectCount, noteCount, secretCount] = await Promise.all([
-    prisma.project.count(),
-    prisma.note.count(),
-    prisma.secret.count(),
+  const [pActive, pArchived, nActive, nArchived] = await Promise.all([
+    prisma.project.count({ where: { status: VAULT_ENTITY_STATUS.ACTIVE } }),
+    prisma.project.count({ where: { status: VAULT_ENTITY_STATUS.ARCHIVED } }),
+    prisma.note.count({ where: { status: VAULT_ENTITY_STATUS.ACTIVE } }),
+    prisma.note.count({ where: { status: VAULT_ENTITY_STATUS.ARCHIVED } }),
   ]);
 
-  // Fetch recent secrets the current user can access
-  const recentSecrets = canReadSecrets
-    ? await prisma.secret.findMany({
-        take:    8,
-        orderBy: { createdAt: "desc" },
-        select: {
-          id:        true,
-          key:       true,
-          project:   { select: { name: true } },
-          sharedWith:{ select: { id: true } },
-          ownerId:   true,
-        },
-      })
-    : [];
-
-  // A user who can read secrets in general can use the copy button.
-  // The decrypt Server Action re-checks the 3-condition rule per-record.
-  const canCopySecret = canReadSecrets;
-
   return (
-    <div className="mx-auto w-full max-w-4xl space-y-8">
-
-      {/* Header */}
+    <div className="mx-auto w-full max-w-5xl space-y-10">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -105,47 +63,51 @@ export default async function DashboardPage() {
         </p>
       </div>
 
-      {/* Stats */}
-      <section>
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Overview
-        </h2>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <StatCard label="Projects"       value={projectCount} />
-          <StatCard label="Notes"          value={noteCount}    />
-          <StatCard label="Stored Secrets" value={secretCount}  />
+      <section className="space-y-4">
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <h2 className="text-lg font-semibold">Projects</h2>
+          <Link
+            href="/dashboard/projects"
+            className="text-sm font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+          >
+            Open projects
+          </Link>
+        </div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <StatusCard href="/dashboard/projects" label="Active" value={pActive} tone="default" />
+          <StatusCard
+            href="/dashboard/projects?status=ARCHIVED"
+            label="Archived"
+            value={pArchived}
+            tone="muted"
+          />
         </div>
       </section>
 
-      <Separator />
-
-      {/* Recent secrets */}
-      <section>
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Recent Secrets
-        </h2>
-
-        {!canReadSecrets ? (
-          <p className="text-sm text-muted-foreground">
-            You do not have permission to view secrets.
-          </p>
-        ) : recentSecrets.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No secrets stored yet.</p>
-        ) : (
-          <div className="space-y-2">
-            {recentSecrets.map((s) => (
-              <SecretRow
-                key={s.id}
-                id={s.id}
-                secretKey={s.key}
-                projectName={s.project.name}
-                canCopy={canCopySecret}
-              />
-            ))}
-          </div>
-        )}
+      <section className="space-y-4">
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <h2 className="text-lg font-semibold">Notes</h2>
+          <Link
+            href="/dashboard/notes"
+            className="text-sm font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+          >
+            Open notes
+          </Link>
+        </div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <StatusCard href="/dashboard/notes" label="Active" value={nActive} tone="default" />
+          <StatusCard
+            href="/dashboard/notes?status=ARCHIVED"
+            label="Archived"
+            value={nArchived}
+            tone="muted"
+          />
+        </div>
       </section>
 
+      <p className="text-xs text-muted-foreground">
+        Archived items are excluded from the main Projects and Notes lists. Counts reflect the full database.
+      </p>
     </div>
   );
 }
