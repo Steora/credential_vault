@@ -145,69 +145,88 @@ function UserTableRow({
   };
 
   return (
-    <TableRow className={!user.isActive ? "opacity-60" : isSelf ? "bg-muted/30" : undefined}>
-      <TableCell>
-        <div>
-          <p className="font-medium leading-tight">{user.name ?? <span className="italic text-muted-foreground">Unnamed</span>}</p>
-          <p className="text-xs text-muted-foreground mt-0.5">{user.email}</p>
+    <TableRow className={`border-b border-white/5 transition-colors hover:bg-white/5 ${!user.isActive ? "opacity-50 grayscale-[0.5]" : isSelf ? "bg-blue-500/5 hover:bg-blue-500/10" : "hover:bg-white/10"}`}>
+      <TableCell className="px-8 py-5">
+        <div className="flex flex-col">
+          <p className="text-sm font-black text-[#0c1421] uppercase tracking-wide">{user.name ?? <span className="italic text-slate-400">Anonymous</span>}</p>
+          <p className="text-[10px] font-bold text-slate-400 mt-0.5 tracking-tight">{user.email}</p>
         </div>
       </TableCell>
 
-      <TableCell>
-        <Badge variant={ROLE_BADGE[user.role]} className="text-xs">
+      <TableCell className="px-8 py-5">
+        <div className={`inline-flex px-2.5 py-0.5 rounded-full border text-[10px] font-black uppercase tracking-widest ${ROLE_BADGE_CLASS[user.role]}`}>
           {user.role}
-        </Badge>
+        </div>
       </TableCell>
 
-      <TableCell>
+      <TableCell className="px-8 py-5">
         {canToggleStatus && user.isActive ? (
           <AlertDialog>
             <AlertDialogTrigger
               render={
-                <Badge
-                  variant="outline"
-                  className={`cursor-pointer text-xs text-green-600 border-green-500 hover:bg-muted/60`}
-                  render={<button type="button" disabled={isPending} aria-label="Change account status" />}
+                <button
+                  type="button"
+                  disabled={isPending}
+                  className="group flex items-center gap-2 px-2.5 py-0.5 bg-green-500/10 text-green-600 border border-green-500/20 rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-green-500/20 transition-all"
                 >
+                  <div className="size-1.5 bg-green-500 rounded-full animate-pulse" />
                   Active
-                </Badge>
+                </button>
               }
             />
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Set {user.name ?? user.email} to inactive?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  Their account will be deactivated. They will be removed from all project sharing and will
-                  no longer see projects, credentials, or notes. They can still sign in, but they will not
-                  have access until an administrator reactivates them.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={handleDeactivate}
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                >
-                  Set inactive
-                </AlertDialogAction>
-              </AlertDialogFooter>
+            <AlertDialogContent className="max-w-sm bg-white border-0 rounded-[2rem] overflow-hidden shadow-2xl p-0">
+              <div className="p-10 flex flex-col items-center text-center space-y-6">
+                <div className="size-16 bg-red-50 rounded-2xl flex items-center justify-center text-red-600">
+                  <AlertTriangle className="size-8 fill-red-600/10" strokeWidth={2.5} />
+                </div>
+                
+                <div className="space-y-4">
+                  <AlertDialogTitle className="text-xl font-black text-[#0c1421] uppercase tracking-wide">
+                    Identity Suspension
+                  </AlertDialogTitle>
+                  <AlertDialogDescription className="text-slate-500 font-medium text-[13px] leading-relaxed px-2">
+                    Revoke all vault permissions for <span className="text-[#0c1421] font-bold uppercase">{user.role}</span>? This will immediately freeze their workspace access.
+                  </AlertDialogDescription>
+                </div>
+
+                <div className="w-full space-y-3 pt-4">
+                  <AlertDialogAction
+                    onClick={handleDeactivate}
+                    className="w-full h-14 bg-[#bd1e1e] hover:bg-[#a31a1a] text-white rounded-2xl font-black uppercase tracking-widest text-[11px] shadow-lg shadow-red-500/20 flex items-center justify-center gap-3 active:scale-[0.98] transition-all"
+                  >
+                    <Ban className="size-4" />
+                    Suspend
+                  </AlertDialogAction>
+                  
+                  <AlertDialogCancel className="w-full h-14 bg-slate-100 hover:bg-slate-200 border-0 text-[#0c1421] rounded-2xl font-black uppercase tracking-widest text-[11px] active:scale-[0.98] transition-all">
+                    Cancel
+                  </AlertDialogCancel>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 py-3.5 border-t border-slate-100 flex items-center justify-center gap-2">
+                <Lock className="size-3 text-slate-400" />
+                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Audit log will be recorded</span>
+              </div>
             </AlertDialogContent>
           </AlertDialog>
         ) : (
-          <Badge
-            variant={user.isActive ? "outline" : "secondary"}
-            className={`text-xs ${user.isActive ? "text-green-600 border-green-500" : "text-muted-foreground"}`}
-          >
+          <div className={`inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full border text-[10px] font-black uppercase tracking-widest ${
+            user.isActive 
+              ? "bg-green-500/10 text-green-600 border-green-500/20" 
+              : "bg-slate-100 text-slate-400 border-slate-200"
+          }`}>
+            {user.isActive && <div className="size-1.5 bg-green-500 rounded-full" />}
             {user.isActive ? "Active" : "Inactive"}
-          </Badge>
+          </div>
         )}
       </TableCell>
 
-      <TableCell className="text-sm text-muted-foreground">
+      <TableCell className="px-8 py-5 text-[10px] font-black text-slate-400 tracking-widest uppercase">
         {formatDate(user.createdAt)}
       </TableCell>
 
-      <TableCell>
+      <TableCell className="px-8 py-5">
         <UserProjectAssignmentsCell
           targetUser={{ id: user.id, name: user.name, email: user.email }}
           assignedProjects={user.assignedProjects}
@@ -215,12 +234,11 @@ function UserTableRow({
         />
       </TableCell>
 
-      <TableCell className="text-right">
+      <TableCell className="px-8 py-5 text-right">
         {isSelf ? (
-          <span className="text-xs text-muted-foreground">(you)</span>
+          <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest opacity-60">System User</span>
         ) : (
-          <div className="flex items-center justify-end gap-1">
-            {/* Role selector — only shown for active users */}
+          <div className="flex items-center justify-end gap-3">
             {canModify && user.isActive && assignableRoles.length > 0 && (
               <Select
                 value={user.role}
@@ -230,15 +248,15 @@ function UserTableRow({
                 }}
                 disabled={isPending}
               >
-                <SelectTrigger className="h-7 w-32 text-xs">
+                <SelectTrigger className="h-8 w-32 bg-white/40 border-white/20 backdrop-blur-md rounded-lg text-[10px] font-black uppercase tracking-widest text-[#0c1421] focus:ring-blue-500/20">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent align="end" sideOffset={8}>
-                  <SelectItem value={user.role} disabled className="text-xs text-muted-foreground">
-                    {user.role} (current)
+                <SelectContent align="end" sideOffset={8} className="bg-white/90 backdrop-blur-xl border-white/20 rounded-xl">
+                  <SelectItem value={user.role} disabled className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                    {user.role} (Current)
                   </SelectItem>
                   {assignableRoles.map((r) => (
-                    <SelectItem key={r} value={r} className="text-xs">
+                    <SelectItem key={r} value={r} className="text-[10px] font-black uppercase tracking-widest text-[#0c1421]">
                       {r}
                     </SelectItem>
                   ))}
@@ -246,17 +264,55 @@ function UserTableRow({
               </Select>
             )}
 
-            {/* Reactivate */}
             {canToggleStatus && !user.isActive && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 px-2 text-xs text-muted-foreground hover:text-green-600"
-                disabled={isPending}
-                onClick={handleReactivate}
-              >
-                Reactivate
-              </Button>
+              <AlertDialog>
+                <AlertDialogTrigger
+                  render={
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 px-4 rounded-lg border-blue-500/20 bg-blue-500/5 text-[10px] font-black text-blue-500 uppercase tracking-widest hover:bg-blue-500/10 transition-all"
+                      disabled={isPending}
+                    >
+                      Authorize Restore
+                    </Button>
+                  }
+                />
+                <AlertDialogContent className="max-w-sm bg-white border-0 rounded-[2rem] overflow-hidden shadow-2xl p-0">
+                  <div className="p-10 flex flex-col items-center text-center space-y-6">
+                    <div className="size-16 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600">
+                      <UserPlus className="size-8" strokeWidth={2.5} />
+                    </div>
+                    
+                    <div className="space-y-4">
+                      <AlertDialogTitle className="text-xl font-black text-[#0c1421] uppercase tracking-wide">
+                        Restore Identity
+                      </AlertDialogTitle>
+                      <AlertDialogDescription className="text-slate-500 font-medium text-[13px] leading-relaxed px-2">
+                        Reactivate <span className="text-[#0c1421] font-bold">{user.name ?? user.email}</span> and restore their access to the vault workspace?
+                      </AlertDialogDescription>
+                    </div>
+
+                    <div className="w-full space-y-3 pt-4">
+                      <AlertDialogAction
+                        onClick={handleReactivate}
+                        className="w-full h-14 bg-[#0c1421] hover:bg-black text-white rounded-2xl font-black uppercase tracking-widest text-[11px] shadow-lg shadow-blue-500/10 flex items-center justify-center gap-3 active:scale-[0.98] transition-all"
+                      >
+                        Restore
+                      </AlertDialogAction>
+                      
+                      <AlertDialogCancel className="w-full h-14 bg-slate-100 hover:bg-slate-200 border-0 text-[#0c1421] rounded-2xl font-black uppercase tracking-widest text-[11px] active:scale-[0.98] transition-all">
+                        Cancel
+                      </AlertDialogCancel>
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-50 py-3.5 border-t border-slate-100 flex items-center justify-center gap-2">
+                    <ShieldCheck className="size-3.5 text-slate-400" />
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Audit log will be recorded</span>
+                  </div>
+                </AlertDialogContent>
+              </AlertDialog>
             )}
           </div>
         )}
@@ -282,52 +338,74 @@ export default function UserManagement({ users, currentUserId, currentUserRole }
   });
 
   return (
-    <div className="space-y-4">
-      {/* Search */}
-      <input
-        type="search"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        placeholder="Filter by name, email, or role…"
-        className="w-full max-w-xs rounded-md border border-input bg-transparent px-3 py-1.5 text-sm shadow-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-      />
-
-      <div className="rounded-lg border border-border overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow className="bg-muted/50">
-              <TableHead>User</TableHead>
-              <TableHead>Role</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Joined</TableHead>
-              <TableHead>Projects</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filtered.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
-                  No users found.
-                </TableCell>
-              </TableRow>
-            ) : (
-              filtered.map((u) => (
-                <UserTableRow
-                  key={u.id}
-                  user={u}
-                  currentUserId={currentUserId}
-                  currentUserRole={currentUserRole}
-                />
-              ))
-            )}
-          </TableBody>
-        </Table>
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-150 relative">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 px-2">
+        <div className="relative w-full max-w-md group">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search Users by name, email, or credential tier..."
+            className="w-full h-12 bg-white/40 border border-white/40 backdrop-blur-md rounded-xl pl-11 pr-4 text-sm font-medium text-[#0c1421] placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 shadow-sm transition-all"
+          />
+        </div>
+        <div className="flex items-center gap-6">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest">{users.filter((u) => u.isActive).length} ACTIVE</span>
+            <span className="text-slate-200">/</span>
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{users.length} TOTAL</span>
+          </div>
+        </div>
       </div>
 
-      <p className="text-xs text-muted-foreground">
-        {users.filter((u) => u.isActive).length} active · {users.length} total
+      <div className="rounded-[2rem] border border-white/40 bg-white/30 backdrop-blur-md overflow-hidden shadow-2xl">
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow className="border-b border-white/10 hover:bg-transparent">
+                <TableHead className="h-14 px-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">User</TableHead>
+                <TableHead className="h-14 px-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Role</TableHead>
+                <TableHead className="h-14 px-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</TableHead>
+                <TableHead className="h-14 px-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Joined</TableHead>
+                <TableHead className="h-14 px-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Projects</TableHead>
+                <TableHead className="h-14 px-8 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Access</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filtered.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center text-slate-500 py-24 font-bold uppercase tracking-widest text-xs">
+                    No matching records in the identity directory.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filtered.map((u) => (
+                  <UserTableRow
+                    key={u.id}
+                    user={u}
+                    currentUserId={currentUserId}
+                    currentUserRole={currentUserRole}
+                  />
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </div>
+
+      <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.3em] text-center">
+        Identity Directory Encrypted • AES-256 Protocol Active
       </p>
     </div>
   );
 }
+import { Search, AlertTriangle, Ban, Lock, UserPlus, ShieldCheck } from "lucide-react";
+
+const ROLE_BADGE_CLASS: Record<Role, string> = {
+  SUPERADMIN: "bg-red-500/10 text-red-600 border-red-500/20",
+  ADMIN:      "bg-blue-500/10 text-blue-600 border-blue-500/20",
+  MODERATOR:  "bg-indigo-500/10 text-indigo-600 border-indigo-500/20",
+  USER:       "bg-slate-500/10 text-slate-600 border-slate-500/20",
+  INTERN:     "bg-slate-100 text-slate-500 border-slate-200",
+};

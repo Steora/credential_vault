@@ -14,6 +14,7 @@ import {
   assertUserInternAssignedToProject,
 } from "@/lib/project-scope-guards";
 import { vaultWhereActive, VAULT_ENTITY_STATUS } from "@/lib/vault-entity-status";
+import { eventBus } from "@/lib/event-bus";
 
 // ---------------------------------------------------------------------------
 // Schema — projectId is conditionally required based on type
@@ -54,10 +55,10 @@ export type SaveNoteResult =
  * Creates a new Note record.
  *
  * Guards:
- *  1. User must be authenticated.
- *  2. MODERATOR or above (canUserPerformAction enforces this).
- *  3. For PROJECT_BASED notes, the referenced project must exist.
- *  4. projectId is cleared for NORMAL notes so no orphaned FK is stored.
+ * 1. User must be authenticated.
+ * 2. MODERATOR or above (canUserPerformAction enforces this).
+ * 3. For PROJECT_BASED notes, the referenced project must exist.
+ * 4. projectId is cleared for NORMAL notes so no orphaned FK is stored.
  */
 export async function saveNote(rawInput: SaveNoteInput): Promise<SaveNoteResult> {
   // ------------------------------------------------------------------
@@ -324,6 +325,55 @@ export async function archiveNote(noteId: string): Promise<ArchiveNoteResult> {
     entityType: "note",
     entityId:   noteId,
     label:      note.title,
+  });
+
+  eventBus.emit("vault_event", {
+    type: "NOTE_ARCHIVED",
+    ...(note.projectId ? { projectId: note.projectId } : {})
+  });
+
+  return { success: true };
+}
+
+/**
+ * Restores an archived note back to ACTIVE.
+ * Same RBAC rules as archiving.
+ */
+export async function unarchiveNote(noteId: string): Promise<ArchiveNoteResult> {
+  const session = await auth();
+  const vault = assertActiveVaultSession(session);
+  if (!vault.ok) return { success: false, error: vault.error };
+
+  const actor = { id: vault.user.id, role: vault.user.role };
+  if (!canUserPerformAction(actor, null, "note", "delete")) {
+    return {
+      success: false,
+      error: `Role "${vault.user.role}" is not permitted to restore notes.`,
+    };
+  }
+
+  const note = await prisma.note.findFirst({
+    where:  { id: noteId, status: VAULT_ENTITY_STATUS.ARCHIVED },
+    select: { id: true, title: true, type: true, projectId: true },
+  });
+  if (!note) return { success: false, error: "Note not found." };
+
+  if (note.type === NoteType.PROJECT_BASED && note.projectId) {
+    const scope = await assertModeratorAssignedToProject(actor, note.projectId);
+    if (!scope.ok) return { success: false, error: scope.error };
+  }
+
+  await prisma.note.update({
+    where: { id: noteId },
+    data:  { status: VAULT_ENTITY_STATUS.ACTIVE },
+  });
+
+  await logActivity({
+    actorId:    vault.user.id,
+    action:     ActivityAction.STATUS,
+    entityType: "note",
+    entityId:   noteId,
+    label:      `Restored ${note.title}`,
   });
 
   return { success: true };

@@ -14,6 +14,7 @@ export const { auth: proxy } = NextAuth(authConfig);
 export default proxy;
 
 export const config = {
-  // Run on every route except Next.js internals and static assets.
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  // Skip /api so Auth.js route handlers (/api/auth/*) are not wrapped by this
+  // proxy — wrapping them breaks client signIn/session fetch ("Failed to fetch").
+  matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],
 };

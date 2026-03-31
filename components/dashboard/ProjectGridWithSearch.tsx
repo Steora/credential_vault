@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { Search, ChevronRight } from "lucide-react";
 
 import ArchiveProjectButton from "@/components/dashboard/ArchiveProjectButton";
+import UnarchiveProjectButton from "@/components/dashboard/UnarchiveProjectButton";
 import { Badge } from "@/components/ui/badge";
 
 export type ProjectCardRow = {
@@ -42,80 +44,103 @@ export default function ProjectGridWithSearch({
   }, [rows, query]);
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <label className="sr-only" htmlFor="project-search">
-          Search projects
-        </label>
-        <input
-          id="project-search"
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search projects and subprojects…"
-          className="w-full max-w-md rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-          autoComplete="off"
-        />
+    <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-150">
+      <div className="flex flex-col gap-6 md:flex-row md:items-center justify-between px-2">
+        <div className="relative w-full max-w-xl group">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 size-3.5 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
+          <input
+            id="project-search"
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search project Projects..."
+            className="w-full h-10 bg-white/40 border border-white/40 backdrop-blur-md rounded-lg pl-10 pr-4 text-[13px] font-medium text-[#0c1421] placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 shadow-sm transition-all"
+            autoComplete="off"
+          />
+        </div>
+        <div className="flex items-center gap-4">
+          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none">{filtered.length} Projects Found</span>
+        </div>
       </div>
 
       {filtered.length === 0 ? (
-        <div className="rounded-xl border border-dashed bg-muted/20 p-16 text-center">
-          <p className="text-sm text-muted-foreground">
-            {query.trim()
-              ? "No projects match your search."
-              : "No projects to show."}
+        <div className="bg-white/30 backdrop-blur-md rounded-2xl border border-white/40 p-16 text-center space-y-4 animate-in fade-in zoom-in duration-500">
+           <div className="size-12 bg-slate-100 rounded-xl mx-auto flex items-center justify-center text-slate-400">
+            <Search className="size-6" />
+          </div>
+          <p className="text-slate-500 font-bold uppercase tracking-widest text-[10px]">
+            No matching Projects in the current directory.
           </p>
         </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((p) => (
             <div
               key={p.id}
-              className="group relative rounded-xl border bg-card p-5 shadow-sm transition-shadow hover:shadow-md"
+              className={`group relative flex flex-col bg-white/40 backdrop-blur-md border border-white/40 p-6 rounded-2xl shadow-sm transition-all hover:bg-white/60 hover:shadow-xl animate-in fade-in slide-in-from-bottom-2 duration-500 ${
+                showProjectCardLink ? "cursor-pointer" : ""
+              }`}
             >
               {showProjectCardLink && (
-                <Link href={`/dashboard/projects/${p.id}`} className="absolute inset-0 rounded-xl" />
+                <Link
+                  href={`/dashboard/projects/${p.id}`}
+                  className="absolute inset-0 z-[1] rounded-2xl"
+                  aria-label={`Open project ${p.displayPath}`}
+                />
               )}
 
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <h3 className="break-words text-sm font-semibold leading-snug" title={p.displayPath}>
-                    {p.displayPath.split(" -> ").map((part, i, arr) => (
-                      <span key={`${p.id}-t-${i}`}>
-                        {i > 0 && (
-                          <span className="font-normal text-muted-foreground"> {"->"} </span>
-                        )}
-                        <span
-                          className={
-                            i === arr.length - 1 ? "text-foreground" : "font-medium text-muted-foreground"
-                          }
-                        >
-                          {part}
+              <div
+                className={`relative z-[2] flex flex-col h-full gap-4 ${
+                  showProjectCardLink ? "pointer-events-none" : ""
+                }`}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="space-y-0.5 min-w-0">
+                    <div className="flex flex-wrap items-center gap-1 text-[8px] font-black tracking-[0.2em] text-slate-400 uppercase">
+                      {p.displayPath.split(" -> ").slice(0, -1).map((part, i) => (
+                        <span key={i} className="flex items-center gap-1">
+                          {part} <ChevronRight className="size-2 text-slate-300" />
                         </span>
-                      </span>
-                    ))}
-                  </h3>
-                  {p.description && (
-                    <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
-                      {p.description}
-                    </p>
+                      ))}
+                    </div>
+                    <h3 className="text-lg font-black text-[#0c1421] tracking-tight truncate uppercase leading-tight" title={p.displayPath}>
+                      {p.displayPath.split(" -> ").pop()}
+                    </h3>
+                  </div>
+                  {canArchive && (
+                    <div className="relative z-[3] shrink-0 pointer-events-auto transition-transform group-hover:scale-110 space-x-1">
+                      {isLiveList ? (
+                        <ArchiveProjectButton projectId={p.id} projectName={p.name} />
+                      ) : (
+                        <UnarchiveProjectButton projectId={p.id} projectName={p.name} />
+                      )}
+                    </div>
                   )}
                 </div>
 
-                {canArchive && isLiveList && (
-                  <div className="relative z-10 shrink-0">
-                    <ArchiveProjectButton projectId={p.id} projectName={p.name} />
-                  </div>
+                {p.description && (
+                  <p className="text-[13px] text-slate-500 line-clamp-2 leading-relaxed font-medium">
+                    {p.description}
+                  </p>
                 )}
-              </div>
 
-              <div className="mt-4 flex flex-wrap gap-2">
-                <Badge variant="secondary" className="text-xs">
-                  {p.secretCount} secret{p.secretCount !== 1 ? "s" : ""}
-                </Badge>
-                <Badge variant="outline" className="text-xs">
-                  {p.noteCount} note{p.noteCount !== 1 ? "s" : ""}
-                </Badge>
+                <div className="mt-auto pt-4 flex flex-wrap gap-4 border-t border-white/10">
+                   <div className="flex flex-col gap-0.5">
+                     <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest leading-none">Secrets</span>
+                     <div className="flex items-center gap-2">
+                       <div className="size-1 bg-blue-500 rounded-full shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
+                       <span className="text-[13px] font-black text-[#0c1421] leading-none">{p.secretCount}</span>
+                     </div>
+                   </div>
+                   <div className="w-px h-6 bg-white/20 self-center" />
+                   <div className="flex flex-col gap-0.5">
+                     <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest leading-none">Notes</span>
+                     <div className="flex items-center gap-2">
+                       <div className="size-1 bg-indigo-500 rounded-full shadow-[0_0_8px_rgba(99,102,241,0.5)]" />
+                       <span className="text-[13px] font-black text-[#0c1421] leading-none">{p.noteCount}</span>
+                     </div>
+                   </div>
+                </div>
               </div>
             </div>
           ))}

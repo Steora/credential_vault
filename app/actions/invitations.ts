@@ -1,12 +1,11 @@
 "use server";
 
 import { randomBytes } from "crypto";
-import { AuthError } from "next-auth";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { ActivityAction, Role } from "@prisma/client";
 
-import { auth, signIn } from "@/auth";
+import { auth } from "@/auth";
 import { logActivity } from "@/lib/activity-log";
 import { getAppBaseUrl, sendInviteEmail } from "@/lib/email";
 import { getInviteAssignableRoles } from "@/lib/invite-roles";
@@ -189,20 +188,5 @@ export async function acceptInvitation(
     label:      `${email} (accepted invite)`,
   });
 
-  try {
-    await signIn("credentials", {
-      email,
-      password,
-      redirectTo: "/dashboard/projects",
-    });
-    return { success: true };
-  } catch (error) {
-    if (error instanceof AuthError) {
-      return {
-        success: false,
-        error: "Account created but sign-in failed. Try signing in on the login page.",
-      };
-    }
-    throw error;
-  }
+  return { success: true };
 }

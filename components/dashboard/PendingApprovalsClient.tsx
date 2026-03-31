@@ -45,126 +45,178 @@ export default function PendingApprovalsClient({ initial }: { initial: Approvals
   const empty = initial.secrets.length === 0 && initial.notes.length === 0;
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-16">
       {empty ? (
-        <p className="text-sm text-muted-foreground">No pending submissions.</p>
+        <div className="bg-white/30 backdrop-blur-md rounded-2xl border border-white/40 p-16 text-center space-y-4 animate-in fade-in zoom-in duration-700">
+          <div className="size-12 bg-slate-100 rounded-xl mx-auto flex items-center justify-center text-slate-400">
+            <CheckCircle2 className="size-6 text-green-500" />
+          </div>
+          <p className="text-slate-500 font-bold uppercase tracking-widest text-[10px]">
+            Operational Clearance Verified. No Pending Actions.
+          </p>
+        </div>
       ) : null}
 
       {initial.secrets.length > 0 && (
-        <section className="space-y-3">
-          <h2 className="text-lg font-semibold">Pending secrets</h2>
-          <div className="rounded-lg border overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/50">
-                  <TableHead>When</TableHead>
-                  <TableHead>Project</TableHead>
-                  <TableHead>Key</TableHead>
-                  <TableHead>Submitted by</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {initial.secrets.map((s) => (
-                  <TableRow key={s.id}>
-                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                      {formatWhen(s.createdAt)}
-                    </TableCell>
-                    <TableCell>{s.projectName}</TableCell>
-                    <TableCell className="font-mono text-xs">{s.key}</TableCell>
-                    <TableCell className="text-sm">
-                      {s.submitterName ?? s.submitterEmail ?? "—"}
-                    </TableCell>
-                    <TableCell className="text-right space-x-1">
-                      <Button
-                        size="sm"
-                        variant="default"
-                        disabled={isPending}
-                        onClick={() =>
-                          run(() => approvePendingSecret(s.id), "Secret approved and added to the vault.")
-                        }
-                      >
-                        Approve
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={isPending}
-                        onClick={() =>
-                          run(() => rejectPendingSecret(s.id), "Request rejected.")
-                        }
-                      >
-                        Reject
-                      </Button>
-                    </TableCell>
+        <section className="space-y-4 animate-in slide-in-from-bottom-4 duration-500">
+          <div className="flex items-center gap-2 px-2">
+            <div className="p-1.5 bg-[#0c1421] text-white rounded-lg shadow-lg">
+              <Key className="size-3.5" />
+            </div>
+            <h2 className="text-lg font-black text-[#0c1421] uppercase tracking-tight">Cryptographic Submissions</h2>
+          </div>
+          
+          <div className="rounded-2xl border border-white/40 bg-white/30 backdrop-blur-md overflow-hidden shadow-xl">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-b border-white/10 hover:bg-transparent">
+                    <TableHead className="h-14 px-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Entry Timestamp</TableHead>
+                    <TableHead className="h-14 px-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Project</TableHead>
+                    <TableHead className="h-14 px-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Token ID</TableHead>
+                    <TableHead className="h-14 px-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Submitted BY</TableHead>
+                    <TableHead className="h-14 px-8 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Access</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {initial.secrets.map((s) => (
+                    <TableRow key={s.id} className="border-b border-white/5 transition-colors hover:bg-white/5">
+                      <TableCell className="px-8 py-5">
+                        <div className="flex flex-col">
+                           <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest leading-none mb-1">{formatWhen(s.createdAt).split(", ")[0]}</span>
+                           <span className="text-[10px] font-bold text-slate-400 tracking-tight">{formatWhen(s.createdAt).split(", ")[1]}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="px-8 py-5">
+                        <span className="text-sm font-black text-[#0c1421] uppercase tracking-wide">{s.projectName}</span>
+                      </TableCell>
+                      <TableCell className="px-8 py-5">
+                        <code className="px-2 py-1 bg-white/50 rounded-lg border border-white/20 text-[11px] font-black text-blue-600">{s.key}</code>
+                      </TableCell>
+                      <TableCell className="px-8 py-5">
+                         <div className="flex items-center gap-2">
+                            <div className="size-1.5 bg-indigo-500 rounded-full" />
+                            <span className="text-[10px] font-black text-slate-600 uppercase tracking-wider">{s.submitterName ?? s.submitterEmail ?? "—"}</span>
+                         </div>
+                      </TableCell>
+                      <TableCell className="px-8 py-5 text-right">
+                        <div className="flex items-center justify-end gap-3">
+                          <Button
+                            size="sm"
+                            className="h-8 px-6 bg-[#0c1421] hover:bg-[#1a2b45] text-white rounded-lg text-[10px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all"
+                            disabled={isPending}
+                            onClick={() =>
+                              run(() => approvePendingSecret(s.id), "Secret approved.")
+                            }
+                          >
+                            Authorize
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 px-6 rounded-lg border-white/20 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:bg-red-50 hover:text-red-500 hover:border-red-500/20 transition-all"
+                            disabled={isPending}
+                            onClick={() =>
+                              run(() => rejectPendingSecret(s.id), "Request rejected.")
+                            }
+                          >
+                            Revoke
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           </div>
         </section>
       )}
 
       {initial.notes.length > 0 && (
-        <section className="space-y-3">
-          <h2 className="text-lg font-semibold">Pending notes</h2>
-          <div className="rounded-lg border overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/50">
-                  <TableHead>When</TableHead>
-                  <TableHead>Title</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Project</TableHead>
-                  <TableHead>Submitted by</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {initial.notes.map((n) => (
-                  <TableRow key={n.id}>
-                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                      {formatWhen(n.createdAt)}
-                    </TableCell>
-                    <TableCell className="font-medium">{n.title}</TableCell>
-                    <TableCell className="text-xs">
-                      {n.type === NoteType.NORMAL ? "General" : "Project-based"}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {n.projectName ?? "—"}
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {n.submitterName ?? n.submitterEmail ?? "—"}
-                    </TableCell>
-                    <TableCell className="text-right space-x-1">
-                      <Button
-                        size="sm"
-                        variant="default"
-                        disabled={isPending}
-                        onClick={() =>
-                          run(() => approvePendingNote(n.id), "Note approved and published.")
-                        }
-                      >
-                        Approve
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={isPending}
-                        onClick={() =>
-                          run(() => rejectPendingNote(n.id), "Request rejected.")
-                        }
-                      >
-                        Reject
-                      </Button>
-                    </TableCell>
+        <section className="space-y-4 animate-in slide-in-from-bottom-4 duration-500 delay-150">
+          <div className="flex items-center gap-2 px-2">
+            <div className="p-1.5 bg-[#0c1421] text-white rounded-lg shadow-lg">
+              <FileText className="size-3.5" />
+            </div>
+            <h2 className="text-lg font-black text-[#0c1421] uppercase tracking-tight">General Notes</h2>
+          </div>
+
+          <div className="rounded-2xl border border-white/40 bg-white/30 backdrop-blur-md overflow-hidden shadow-xl">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-b border-white/10 hover:bg-transparent">
+                    <TableHead className="h-14 px-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Entry Timestamp</TableHead>
+                    <TableHead className="h-14 px-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Project Title</TableHead>
+                    <TableHead className="h-14 px-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Access Level</TableHead>
+                    <TableHead className="h-14 px-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Project</TableHead>
+                    <TableHead className="h-14 px-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Submitted BY</TableHead>
+                    <TableHead className="h-14 px-8 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Access</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {initial.notes.map((n) => (
+                    <TableRow key={n.id} className="border-b border-white/5 transition-colors hover:bg-white/5">
+                      <TableCell className="px-8 py-5">
+                         <div className="flex flex-col">
+                           <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest leading-none mb-1">{formatWhen(n.createdAt).split(", ")[0]}</span>
+                           <span className="text-[10px] font-bold text-slate-400 tracking-tight">{formatWhen(n.createdAt).split(", ")[1]}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="px-8 py-5">
+                        <span className="text-sm font-black text-[#0c1421] uppercase tracking-wide">{n.title}</span>
+                      </TableCell>
+                      <TableCell className="px-8 py-5">
+                        <div className={`inline-flex px-2 px-1.5 py-0.5 rounded-full border text-[9px] font-black uppercase tracking-widest ${
+                           n.type === NoteType.NORMAL ? "bg-slate-100/50 text-slate-500 border-slate-200" : "bg-indigo-500/10 text-indigo-600 border-indigo-500/20"
+                        }`}>
+                          {n.type === NoteType.NORMAL ? "Global" : "Project-Locked"}
+                        </div>
+                      </TableCell>
+                      <TableCell className="px-8 py-5">
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{n.projectName ?? "—"}</span>
+                      </TableCell>
+                      <TableCell className="px-8 py-5">
+                         <div className="flex items-center gap-2">
+                            <div className="size-1.5 bg-blue-500 rounded-full" />
+                            <span className="text-[10px] font-black text-slate-600 uppercase tracking-wider">{n.submitterName ?? n.submitterEmail ?? "—"}</span>
+                         </div>
+                      </TableCell>
+                      <TableCell className="px-8 py-5 text-right">
+                        <div className="flex items-center justify-end gap-3">
+                          <Button
+                            size="sm"
+                            className="h-8 px-6 bg-[#0c1421] hover:bg-[#1a2b45] text-white rounded-lg text-[10px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all"
+                            disabled={isPending}
+                            onClick={() =>
+                              run(() => approvePendingNote(n.id), "Note authorized.")
+                            }
+                          >
+                            Authorize
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 px-6 rounded-lg border-white/20 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:bg-red-50 hover:text-red-500 hover:border-red-500/20 transition-all"
+                            disabled={isPending}
+                            onClick={() =>
+                              run(() => rejectPendingNote(n.id), "Request rejected.")
+                            }
+                          >
+                            Revoke
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           </div>
         </section>
       )}
     </div>
   );
 }
+import { Key, FileText, CheckCircle2, ChevronRight } from "lucide-react";

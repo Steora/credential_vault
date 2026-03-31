@@ -20,6 +20,7 @@ import EditSecretDialog      from "@/components/dashboard/EditSecretDialog";
 import DeleteSecretButton    from "@/components/dashboard/DeleteSecretButton";
 import ManageAccessDialog    from "@/components/dashboard/ManageAccessDialog";
 import CopyNoteButton        from "@/components/CopyNoteButton";
+import ReactMarkdown         from "react-markdown";
 import AddNoteDialog         from "@/components/dashboard/AddNoteDialog";
 import EditNoteDialog        from "@/components/dashboard/EditNoteDialog";
 import ArchiveNoteButton      from "@/components/dashboard/ArchiveNoteButton";
@@ -151,13 +152,18 @@ export default async function ProjectDetailPage({
         </Link>
 
         <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-bold tracking-tight">{project.name}</h1>
-            {isArchivedProject && (
-              <span className="rounded-md border border-muted-foreground/30 bg-muted/50 px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                Archived
-              </span>
-            )}
+          <div className="flex min-w-0 flex-col gap-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-2xl font-bold tracking-tight">{project.name}</h1>
+              {isArchivedProject && (
+                <span className="rounded-md border border-muted-foreground/30 bg-muted/50 px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                  Archived
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Created on {formatDate(project.createdAt)}
+            </p>
           </div>
           {canLeaveProject && (
             <LeaveProjectButton projectId={id} projectName={project.name} />
@@ -342,9 +348,9 @@ export default async function ProjectDetailPage({
                         {note.title}
                       </Link>
                     </h3>
-                    <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">
-                      {note.content}
-                    </p>
+                    <div className="mt-2 prose prose-sm max-w-none text-muted-foreground">
+                      <ReactMarkdown>{note.content}</ReactMarkdown>
+                    </div>
                   </div>
 
                   <div className="flex shrink-0 items-center gap-1">

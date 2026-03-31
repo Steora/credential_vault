@@ -49,6 +49,7 @@ export default function ArchiveProjectButton({ projectId, projectName }: Props) 
             size="icon"
             className="h-7 w-7 text-muted-foreground hover:text-foreground"
             aria-label="Archive project"
+            title="Archive"
             disabled={isPending}
           >
             <Archive className="h-3.5 w-3.5" />

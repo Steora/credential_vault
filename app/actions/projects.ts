@@ -158,3 +158,50 @@ export async function archiveProject(projectId: string): Promise<ProjectResult> 
 
   return { success: true, id: projectId };
 }
+
+/**
+ * Restores an archived project (and its subprojects) back to ACTIVE status.
+ * Same RBAC and scope rules as archiving.
+ */
+export async function unarchiveProject(projectId: string): Promise<ProjectResult> {
+  const session = await auth();
+  const vault = assertActiveVaultSession(session);
+  if (!vault.ok) return { success: false, error: vault.error };
+
+  const actor = { id: vault.user.id, role: vault.user.role };
+  if (!canUserPerformAction(actor, null, "project", "delete")) {
+    return { success: false, error: "You do not have permission to restore projects." };
+  }
+
+  const project = await prisma.project.findFirst({
+    where:  { id: projectId, status: VAULT_ENTITY_STATUS.ARCHIVED },
+    select: { id: true, name: true },
+  });
+  if (!project) return { success: false, error: "Project not found." };
+
+  if (actor.role === Role.MODERATOR) {
+    const scope = await getVaultProjectIdsForActor({ id: actor.id, role: actor.role });
+    if (!scope.includes(projectId)) {
+      return { success: false, error: "You cannot restore a project outside your assignment scope." };
+    }
+  }
+
+  const subtreeIds = await collectProjectSubtreeIds(projectId);
+  await prisma.project.updateMany({
+    where: { id: { in: subtreeIds }, status: VAULT_ENTITY_STATUS.ARCHIVED },
+    data:  { status: VAULT_ENTITY_STATUS.ACTIVE },
+  });
+
+  await logActivity({
+    actorId:    vault.user.id,
+    action:     ActivityAction.STATUS,
+    entityType: "project",
+    entityId:   projectId,
+    label:
+      subtreeIds.length > 1
+        ? `Restored ${project.name} (+${subtreeIds.length - 1} subproject(s))`
+        : `Restored ${project.name}`,
+  });
+
+  return { success: true, id: projectId };
+}

@@ -1,47 +1,12 @@
 "use server";
 
-import { AuthError } from "next-auth";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 
-import { signIn }  from "@/auth";
-import { prisma }  from "@/lib/prisma";
-
-export type LoginResult =
-  | { success: true }
-  | { success: false; error: string };
-
-export async function loginAction(
-  _prev: LoginResult | null,
-  formData: FormData
-): Promise<LoginResult> {
-  const email    = (formData.get("email")    as string | null)?.trim().toLowerCase() ?? "";
-  const password = (formData.get("password") as string | null) ?? "";
-  const callbackUrl = (formData.get("callbackUrl") as string | null) ?? "/";
-
-  if (!email || !password) {
-    return { success: false, error: "Email and password are required." };
-  }
-
-  try {
-    await signIn("credentials", { email, password, redirectTo: callbackUrl });
-    return { success: true };
-  } catch (error) {
-    if (error instanceof AuthError) {
-      switch (error.type) {
-        case "CredentialsSignin":
-          return { success: false, error: "Invalid email or password." };
-        default:
-          return { success: false, error: "Something went wrong. Please try again." };
-      }
-    }
-    // signIn throws a redirect — re-throw so Next.js handles it
-    throw error;
-  }
-}
+import { prisma } from "@/lib/prisma";
 
 // ---------------------------------------------------------------------------
-// Register
+// Register (browser signs in via next-auth/react after success — see register page.)
 // ---------------------------------------------------------------------------
 
 const RegisterSchema = z.object({
@@ -99,14 +64,5 @@ export async function registerAction(
     data: { name, email, passwordHash },
   });
 
-  // Sign the new user in immediately and redirect to the dashboard
-  try {
-    await signIn("credentials", { email, password, redirectTo: "/" });
-    return { success: true };
-  } catch (error) {
-    if (error instanceof AuthError) {
-      return { success: false, error: "Account created but sign-in failed. Please log in." };
-    }
-    throw error;
-  }
+  return { success: true };
 }

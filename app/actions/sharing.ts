@@ -9,6 +9,7 @@ import { canUserPerformAction } from "@/lib/permissions";
 import { assertActiveVaultSession } from "@/lib/session-guards";
 import { assertModeratorAssignedToProject } from "@/lib/project-scope-guards";
 import { vaultWhereActive } from "@/lib/vault-entity-status";
+import { eventBus }             from "@/lib/event-bus";
 
 export type SharingResult =
   | { success: true }
@@ -98,6 +99,12 @@ export async function removeUserFromSecret(
     label:      `Revoked access for user ${userId}`,
   });
 
+  // Broadcast the revocation to the specific user so their client refreshes
+  eventBus.emit("vault_event", {
+    type: "ACCESS_REVOKED",
+    userId: userId,
+  });
+
   return { success: true };
 }
 
@@ -171,6 +178,12 @@ export async function removeUserFromNote(
     entityType: "sharing_note",
     entityId:   noteId,
     label:      `Revoked access for user ${userId}`,
+  });
+
+  // Broadcast the revocation to the specific user so their client refreshes
+  eventBus.emit("vault_event", {
+    type: "ACCESS_REVOKED",
+    userId: userId,
   });
 
   return { success: true };

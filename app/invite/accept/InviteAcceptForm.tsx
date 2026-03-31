@@ -1,7 +1,8 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
+import { signIn } from "next-auth/react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,7 +16,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-import { acceptInvitation, type AcceptInvitationResult } from "@/app/actions/invitations";
+import { acceptInvitation } from "@/app/actions/invitations";
+
+import { getSafeInternalCallbackUrl } from "@/lib/auth-callback-url";
 
 function EyeIcon({ open }: { open: boolean }) {
   return open ? (
@@ -51,11 +54,59 @@ export default function InviteAcceptForm({
   email:     string;
   roleLabel: string;
 }) {
-  const [state, formAction, isPending] = useActionState<AcceptInvitationResult | null, FormData>(
-    acceptInvitation,
-    null,
-  );
   const [showPw, setShowPw] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, setIsPending] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError(null);
+    const form = e.currentTarget;
+    const fd = new FormData(form);
+    const password = (fd.get("password") as string) ?? "";
+
+    setIsPending(true);
+    try {
+      const created = await acceptInvitation(null, fd);
+      if (!created.success) {
+        setError(created.error);
+        return;
+      }
+
+      const afterLogin = getSafeInternalCallbackUrl("/dashboard/projects");
+      const result = await signIn("credentials", {
+        email,
+        password,
+        redirect: false,
+        callbackUrl: afterLogin,
+      });
+
+      if (result?.error) {
+        setError("Account created but sign-in failed. Please sign in on the login page.");
+        return;
+      }
+
+      if (result?.ok) {
+        if (result.url) {
+          try {
+            const u = new URL(result.url, window.location.origin);
+            if (u.origin === window.location.origin) {
+              window.location.assign(`${u.pathname}${u.search}${u.hash}`);
+              return;
+            }
+          } catch {
+            /* fall through */
+          }
+        }
+        window.location.assign(afterLogin);
+        return;
+      }
+
+      setError("Something went wrong. Please try signing in.");
+    } finally {
+      setIsPending(false);
+    }
+  }
 
   return (
     <Card className="w-full max-w-sm shadow-lg">
@@ -68,7 +119,7 @@ export default function InviteAcceptForm({
       </CardHeader>
 
       <CardContent>
-        <form action={formAction} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4">
           <input type="hidden" name="token" value={token} />
 
           <div className="space-y-1.5">
@@ -122,9 +173,9 @@ export default function InviteAcceptForm({
             />
           </div>
 
-          {state && !state.success && (
+          {error && (
             <p className="text-sm text-destructive" role="alert">
-              {state.error}
+              {error}
             </p>
           )}
 

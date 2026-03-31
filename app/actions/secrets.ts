@@ -16,6 +16,7 @@ import {
 } from "@/lib/project-scope-guards";
 import { vaultWhereActive } from "@/lib/vault-entity-status";
 import type { EnvPair } from "@/lib/env-parser";
+import { eventBus } from "@/lib/event-bus";
 
 // ---------------------------------------------------------------------------
 // Input schema
@@ -48,10 +49,10 @@ export type SaveSecretResult =
  * Validates, trims, encrypts, and persists a secret tied to a project.
  *
  * Guards:
- *  1. User must be authenticated.
- *  2. User's role must be MODERATOR or above (enforced by canUserPerformAction).
- *  3. The referenced project must exist.
- *  4. Encryption must succeed before any DB write is attempted.
+ * 1. User must be authenticated.
+ * 2. User's role must be MODERATOR or above (enforced by canUserPerformAction).
+ * 3. The referenced project must exist.
+ * 4. Encryption must succeed before any DB write is attempted.
  */
 export async function saveSecret(
   rawInput: SaveSecretInput
@@ -493,6 +494,11 @@ export async function deleteSecret(secretId: string): Promise<DeleteSecretResult
     entityType: "secret",
     entityId:   secretId,
     label:      secret.key,
+  });
+
+  eventBus.emit("vault_event", {
+    type: "SECRET_DELETED",
+    projectId: secret.projectId,
   });
 
   return { success: true };

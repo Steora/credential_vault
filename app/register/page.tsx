@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useState } from "react";
+import { useState } from "react";
+import { signIn } from "next-auth/react";
 
 import { Button }   from "@/components/ui/button";
 import { Input }    from "@/components/ui/input";
@@ -15,7 +16,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-import { registerAction, type RegisterResult } from "@/app/actions/auth";
+import { registerAction } from "@/app/actions/auth";
+
+import { getSafeInternalCallbackUrl } from "@/lib/auth-callback-url";
 
 function EyeIcon({ open }: { open: boolean }) {
   return open ? (
@@ -33,13 +36,61 @@ function EyeIcon({ open }: { open: boolean }) {
 }
 
 export default function RegisterPage() {
-  const [state, formAction, isPending] = useActionState<RegisterResult | null, FormData>(
-    registerAction,
-    null
-  );
-
   const [showPassword, setShowPassword]           = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, setIsPending] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError(null);
+    const form = e.currentTarget;
+    const fd = new FormData(form);
+    const email = ((fd.get("email") as string) ?? "").trim().toLowerCase();
+    const password = (fd.get("password") as string) ?? "";
+
+    setIsPending(true);
+    try {
+      const created = await registerAction(null, fd);
+      if (!created.success) {
+        setError(created.error);
+        return;
+      }
+
+      const afterLogin = getSafeInternalCallbackUrl("/");
+      const result = await signIn("credentials", {
+        email,
+        password,
+        redirect: false,
+        callbackUrl: afterLogin,
+      });
+
+      if (result?.error) {
+        setError("Account created but sign-in failed. Please sign in manually.");
+        return;
+      }
+
+      if (result?.ok) {
+        if (result.url) {
+          try {
+            const u = new URL(result.url, window.location.origin);
+            if (u.origin === window.location.origin) {
+              window.location.assign(`${u.pathname}${u.search}${u.hash}`);
+              return;
+            }
+          } catch {
+            /* fall through */
+          }
+        }
+        window.location.assign(afterLogin);
+        return;
+      }
+
+      setError("Something went wrong. Please try signing in.");
+    } finally {
+      setIsPending(false);
+    }
+  }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-zinc-50 dark:bg-zinc-950 px-4">
@@ -54,7 +105,7 @@ export default function RegisterPage() {
         </CardHeader>
 
         <CardContent>
-          <form action={formAction} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="name">Full name</Label>
               <Input
@@ -131,9 +182,9 @@ export default function RegisterPage() {
               </div>
             </div>
 
-            {state && !state.success && (
+            {error && (
               <p className="text-sm text-destructive" role="alert">
-                {state.error}
+                {error}
               </p>
             )}
 

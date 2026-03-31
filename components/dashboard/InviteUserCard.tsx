@@ -39,53 +39,68 @@ export default function InviteUserCard({ currentUserRole }: { currentUserRole: R
   const defaultRole = assignable.includes(Role.USER) ? Role.USER : assignable[0];
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-base">Invite user</CardTitle>
-        <CardDescription>
-          Send an email invitation. They choose a name and password when they accept. Invites expire after 7 days.
-        </CardDescription>
+    <Card className="bg-white/40 backdrop-blur-md border-white/40 shadow-xl rounded-[2rem] overflow-hidden group">
+      <CardHeader className="pb-6 border-b border-white/10">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-[#0c1421] text-white rounded-xl shadow-lg ring-4 ring-[#0c1421]/5">
+            <UserPlus className="size-5" />
+          </div>
+          <div>
+            <CardTitle className="text-xl font-black text-[#0c1421] uppercase tracking-tight">Invite User</CardTitle>
+            <CardDescription className="text-slate-500 font-medium tracking-tight">
+              Initialize a new User profile. Invitations expire after 168h.
+            </CardDescription>
+          </div>
+        </div>
       </CardHeader>
-      <CardContent>
-        <form ref={formRef} action={formAction} className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end">
-          <div className="space-y-1.5 flex-1 min-w-[200px]">
-            <Label htmlFor="invite-email">Email</Label>
+      <CardContent className="pt-8">
+        <form ref={formRef} action={formAction} className="flex flex-col gap-6 lg:flex-row lg:items-end">
+          <div className="space-y-2 flex-grow">
+            <Label htmlFor="invite-email" className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Secure Email Endpoint</Label>
             <Input
               id="invite-email"
               name="email"
               type="email"
               autoComplete="off"
               placeholder="colleague@company.com"
+              className="bg-white/40 border-white/20 backdrop-blur-md h-12 rounded-xl focus-visible:ring-blue-500/30 placeholder:text-slate-400 font-medium"
               required
               disabled={isPending}
             />
           </div>
-          <div className="space-y-1.5 w-full sm:w-44">
-            <Label htmlFor="invite-role">Role</Label>
+          <div className="space-y-2 w-full lg:w-48">
+            <Label htmlFor="invite-role" className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Role</Label>
             <select
               id="invite-role"
               name="role"
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex h-12 w-full rounded-xl border border-white/20 bg-white/40 px-4 py-2 text-sm shadow-sm focus-visible:outline-none focus:ring-2 focus:ring-blue-500/20 backdrop-blur-md font-bold text-[#0c1421]"
               defaultValue={defaultRole}
               disabled={isPending}
               required
             >
               {assignable.map((r) => (
-                <option key={r} value={r}>
+                <option key={r} value={r} className="bg-white">
                   {r}
                 </option>
               ))}
             </select>
           </div>
-          <Button type="submit" disabled={isPending} className="w-full sm:w-auto">
-            {isPending ? "Sending…" : "Send invitation"}
+          <Button 
+            type="submit" 
+            disabled={isPending} 
+            className="h-12 px-8 bg-[#0c1421] hover:bg-[#1a2b45] text-white rounded-xl font-black uppercase tracking-widest transition-all shadow-lg active:scale-95"
+          >
+            {isPending ? "Syncing..." : "Invite User"}
           </Button>
         </form>
-        <p className="mt-3 text-xs text-muted-foreground">
-          Email is sent from <span className="font-mono text-[11px]">mitra.b.mukherjee@steorasystems.com</span>{" "}
-          (configure SMTP in production).
-        </p>
+        <div className="mt-8 flex items-center gap-2 group-hover:opacity-100 transition-opacity">
+          <div className="size-1.5 bg-blue-500 rounded-full shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">
+            Outbound: <span className="text-[#0c1421] font-black">mitra.b.mukherjee@steorasystems.com</span>
+          </p>
+        </div>
       </CardContent>
     </Card>
   );
 }
+import { UserPlus } from "lucide-react";

@@ -3,10 +3,14 @@
 import { useState, useTransition } from "react";
 import { Role }                    from "@prisma/client";
 import { toast }                   from "sonner";
-import { Button } from "@/components/ui/button";
-import { Badge }  from "@/components/ui/badge";
+import { Button }   from "@/components/ui/button";
+import { Badge }    from "@/components/ui/badge";
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from "@/components/ui/select";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
@@ -48,6 +52,13 @@ export default function ManageAccessDialog({
   const [isPending, startTransition] = useTransition();
 
   const available = allUsers.filter((u) => !access.some((a) => a.id === u.id));
+  const sharedWithRole = access.map((u) => {
+    const full = allUsers.find((x) => x.id === u.id);
+    return { ...u, role: full?.role as Role | undefined };
+  });
+  const canRemoveUserRole = sharedWithRole.some((u) => u.role === Role.USER);
+  const canRemoveInternRole = sharedWithRole.some((u) => u.role === Role.INTERN);
+  const hasRemovableUsers = sharedWithRole.length > 0;
 
   const handleAdd = (userId: string | null) => {
     if (userId == null) return;
@@ -67,6 +78,31 @@ export default function ManageAccessDialog({
         toast.error(result.error);
       } else {
         toast.success(`Access granted to ${user.name ?? user.email}.`);
+      }
+    });
+  };
+  const handleAddByRole = (roleValue: string | null) => {
+    if (!roleValue) return;
+    const role = roleValue as Role;
+    const toAdd = available.filter((u) => u.role === role);
+    if (toAdd.length === 0) return;
+
+    // Optimistic: add everyone in this role locally
+    setAccess((prev) => [...prev, ...toAdd]);
+
+    startTransition(async () => {
+      for (const user of toAdd) {
+        const result =
+          type === "secret"
+            ? await addUserToSecret(resourceId, user.id)
+            : await addUserToNote(resourceId, user.id);
+
+        if (!result.success) {
+          setAccess((prev) => prev.filter((u) => u.id !== user.id));
+          toast.error(result.error);
+        } else {
+          toast.success(`Access granted to ${user.name ?? user.email}.`);
+        }
       }
     });
   };
@@ -91,6 +127,39 @@ export default function ManageAccessDialog({
     });
   };
 
+  const handleRemoveByUser = (userId: string | null) => {
+    if (!userId) return;
+    handleRemove(userId);
+  };
+
+  const handleRemoveByRole = (roleValue: string | null) => {
+    if (!roleValue) return;
+    const role = roleValue as Role;
+    const toRemove = sharedWithRole.filter((u) => u.role === role);
+    if (toRemove.length === 0) return;
+
+    // Optimistic: remove all matching users locally
+    const ids = toRemove.map((u) => u.id);
+    setAccess((prev) => prev.filter((u) => !ids.includes(u.id)));
+
+    startTransition(async () => {
+      for (const user of toRemove) {
+        const result =
+          type === "secret"
+            ? await removeUserFromSecret(resourceId, user.id)
+            : await removeUserFromNote(resourceId, user.id);
+
+        if (!result.success) {
+          // Put back this user on failure
+          setAccess((prev) => [...prev, { id: user.id, name: user.name, email: user.email }]);
+          toast.error(result.error);
+        } else {
+          toast.success(`Access removed for ${user.name ?? user.email}.`);
+        }
+      }
+    });
+  };
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger
@@ -100,6 +169,7 @@ export default function ManageAccessDialog({
             size="icon"
             className="h-7 w-7 text-muted-foreground hover:text-foreground"
             aria-label="Manage access"
+            title="Manage access"
           >
             <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none">
               <circle cx="6" cy="5"  r="2.5" stroke="currentColor" strokeWidth="1.25" />
@@ -148,34 +218,122 @@ export default function ManageAccessDialog({
             )}
           </div>
 
-          {/* Add user */}
+          {/* Add Permission */}
           {available.length > 0 && (
-            <div>
-              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Add user
+            <div className="space-y-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Add permission
               </p>
-              <Select onValueChange={handleAdd} disabled={isPending}>
+              {/* By role */}
+              <div className="space-y-1.5">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Select by role
+                </span>
+                <Select onValueChange={handleAddByRole} disabled={isPending}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Choose a role…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={Role.USER}>User</SelectItem>
+                    <SelectItem value={Role.INTERN}>Intern</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* By user */}
+              <div className="space-y-1.5">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Select by user
+                </span>
+                <Select onValueChange={handleAdd} disabled={isPending}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Search or choose a user…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {available.map((u) => (
+                      <SelectItem key={u.id} value={u.id}>
+                        <span className="flex items-center gap-2">
+                          <span className="truncate max-w-[180px]">
+                            {u.name ?? u.email}
+                          </span>
+                          <Badge variant="outline" className="text-[10px] py-0">
+                            {u.role}
+                          </Badge>
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <p className="pt-1 text-[11px] text-muted-foreground">
+                Moderators and above already have access by role.
+              </p>
+            </div>
+          )}
+
+          {/* Remove Permission */}
+          <div className="space-y-3 pt-2 border-t border-border/50">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Remove permission
+            </p>
+
+            {/* By role */}
+            <div className="space-y-1.5">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Remove by role
+              </span>
+              <Select
+                onValueChange={handleRemoveByRole}
+                disabled={isPending || !canRemoveUserRole && !canRemoveInternRole}
+              >
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select a user…" />
+                  <SelectValue placeholder={hasRemovableUsers ? "Choose a role…" : "No roles to remove"} />
                 </SelectTrigger>
                 <SelectContent>
-                  {available.map((u) => (
+                  <SelectItem value={Role.USER} disabled={!canRemoveUserRole}>
+                    User
+                  </SelectItem>
+                  <SelectItem value={Role.INTERN} disabled={!canRemoveInternRole}>
+                    Intern
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* By user */}
+            <div className="space-y-1.5">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Remove by user
+              </span>
+              <Select
+                onValueChange={handleRemoveByUser}
+                disabled={isPending || !hasRemovableUsers}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue
+                    placeholder={hasRemovableUsers ? "Choose a user to remove…" : "No users to remove"}
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {sharedWithRole.map((u) => (
                     <SelectItem key={u.id} value={u.id}>
                       <span className="flex items-center gap-2">
-                        <span>{u.name ?? u.email}</span>
-                        <Badge variant="outline" className="text-[10px] py-0">
-                          {u.role}
-                        </Badge>
+                        <span className="truncate max-w-[180px]">
+                          {u.name ?? u.email}
+                        </span>
+                        {u.role && (
+                          <Badge variant="outline" className="text-[10px] py-0">
+                            {u.role}
+                          </Badge>
+                        )}
                       </span>
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              <p className="mt-1.5 text-xs text-muted-foreground">
-                Note: Moderators and above already have access by role.
-              </p>
             </div>
-          )}
+          </div>
         </div>
       </DialogContent>
     </Dialog>

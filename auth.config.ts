@@ -58,6 +58,8 @@ export const authConfig = {
       session.user.id       = token.id       as string;
       session.user.role     = token.role     as Role;
       session.user.isActive = token.isActive as boolean;
+      session.user.image    = (token.picture as string | null | undefined) ?? session.user.image;
+      if (typeof token.name === "string") session.user.name = token.name;
       return session;
     },
   },

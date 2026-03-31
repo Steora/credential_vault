@@ -1,12 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { NoteType } from "@prisma/client";
+import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import { auth } from "@/auth";
 import { getNoteById } from "@/lib/queries/notes";
 import { VAULT_ENTITY_STATUS } from "@/lib/vault-entity-status";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import CopyNoteButton from "@/components/CopyNoteButton";
+import EditNoteDialog  from "@/components/dashboard/EditNoteDialog";
 
 function formatDate(d: Date) {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -88,7 +90,15 @@ export default async function NoteDetailPage({
 
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1 space-y-6">
-          <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">{note.content}</p>
+          <div className="prose prose-sm max-w-none text-foreground">
+            <ReactMarkdown
+              urlTransform={(url) =>
+                url.startsWith("data:") ? url : defaultUrlTransform(url)
+              }
+            >
+              {note.content}
+            </ReactMarkdown>
+          </div>
 
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <span>By {note.owner.name ?? note.owner.email}</span>
@@ -105,7 +115,14 @@ export default async function NoteDetailPage({
           </div>
         </div>
 
-        <div className="shrink-0">
+        <div className="flex shrink-0 items-center gap-2">
+          {!isArchived ? (
+            <EditNoteDialog
+              noteId={note.id}
+              initialTitle={note.title}
+              initialContent={note.content}
+            />
+          ) : null}
           <CopyNoteButton title={note.title} content={note.content} />
         </div>
       </div>

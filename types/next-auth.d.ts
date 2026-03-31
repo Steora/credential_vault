@@ -27,5 +27,7 @@ declare module "next-auth/jwt" {
     id:       string;
     role:     Role;
     isActive: boolean;
+    /** Profile photo URL or data URL; synced to session.user.image */
+    picture?: string | null;
   }
 }

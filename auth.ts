@@ -13,6 +13,7 @@ import { PrismaAdapter } from "@auth/prisma-adapter";
 import bcrypt from "bcryptjs";
 import type { Role } from "@prisma/client";
 
+import { pictureForJwt } from "@/lib/picture-for-jwt";
 import { prisma }     from "@/lib/prisma";
 import { authConfig } from "./auth.config";
 
@@ -33,16 +34,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.id       = user.id;
         token.role     = (user as { id: string; role: Role }).role;
         token.isActive = (user as { id: string; role: Role; isActive: boolean }).isActive;
+        token.picture = pictureForJwt(
+          (user as { image?: string | null }).image ?? undefined,
+        );
       } else if (token.id) {
         // Every subsequent request — re-fetch role and isActive from DB so that
         // deactivation takes effect on the very next request without sign-out.
         const dbUser = await prisma.user.findUnique({
           where:  { id: token.id as string },
-          select: { role: true, isActive: true },
+          select: { role: true, isActive: true, image: true, name: true },
         });
         if (dbUser) {
           token.role     = dbUser.role;
           token.isActive = dbUser.isActive;
+          token.picture = pictureForJwt(dbUser.image);
+          token.name     = dbUser.name ?? undefined;
         }
       }
       return token;
@@ -73,6 +79,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           id:       user.id,
           email:    user.email,
           name:     user.name ?? undefined,
+          image:    pictureForJwt(user.image),
           role:     user.role,
           isActive: user.isActive,
         };

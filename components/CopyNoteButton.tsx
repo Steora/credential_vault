@@ -3,11 +3,6 @@
 import { useState } from "react";
 import { toast }    from "sonner";
 import { Button }   from "@/components/ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 
 function CopyIcon({ className }: { className?: string }) {
   return (
@@ -54,27 +49,19 @@ export default function CopyNoteButton({ title, content }: Props) {
   };
 
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={handleCopy}
-            aria-label={copied ? "Copied!" : `Copy note "${title}"`}
-            className="h-7 w-7 text-muted-foreground hover:text-foreground"
-          >
-            {copied ? (
-              <CheckIcon className="h-3.5 w-3.5 text-green-600" />
-            ) : (
-              <CopyIcon className="h-3.5 w-3.5" />
-            )}
-          </Button>
-        }
-      />
-      <TooltipContent side="top">
-        <p>{copied ? "Copied!" : "Copy note to clipboard"}</p>
-      </TooltipContent>
-    </Tooltip>
+    <Button
+      variant="ghost"
+      size="icon"
+      onClick={handleCopy}
+      aria-label={copied ? "Copied!" : `Copy note "${title}"`}
+      title={copied ? "Copied!" : "Copy"}
+      className="h-7 w-7 text-muted-foreground hover:text-foreground"
+    >
+      {copied ? (
+        <CheckIcon className="h-3.5 w-3.5 text-green-600" />
+      ) : (
+        <CopyIcon className="h-3.5 w-3.5" />
+      )}
+    </Button>
   );
 }

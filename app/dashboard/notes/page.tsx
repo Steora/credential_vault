@@ -8,17 +8,33 @@ import {
   getAccessibleNotesByStatus,
   getGeneralNotes,
 } from "@/lib/queries/notes";
-import { VAULT_ENTITY_STATUS } from "@/lib/vault-entity-status";
+import {
+  parseVaultStatusParam,
+  VAULT_ENTITY_STATUS,
+} from "@/lib/vault-entity-status";
+import { FileText, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import CopyNoteButton from "@/components/CopyNoteButton";
 import AddNoteDialog from "@/components/dashboard/AddNoteDialog";
 import EditNoteDialog from "@/components/dashboard/EditNoteDialog";
 import ArchiveNoteButton from "@/components/dashboard/ArchiveNoteButton";
+import UnarchiveNoteButton from "@/components/dashboard/UnarchiveNoteButton";
 import ManageAccessDialog from "@/components/dashboard/ManageAccessDialog";
 
 function formatDate(d: Date) {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function getNotePreview(content: string): string {
+  if (!content) return "";
+  const firstLine = content.split(/\r?\n/)[0] ?? "";
+  const trimmed = firstLine.trim();
+  if (!trimmed) return "";
+  // If the first line is just an image markdown, show a simple label instead of the long data URL.
+  if (trimmed.startsWith("![")) return "[image]";
+  const max = 80;
+  return trimmed.length > max ? `${trimmed.slice(0, max)}…` : trimmed;
 }
 
 export default async function NotesPage({
@@ -30,13 +46,12 @@ export default async function NotesPage({
   if (!session?.user) return null;
 
   const sp = await searchParams;
-  const statusParam = typeof sp.status === "string" ? sp.status : undefined;
-
-  if (statusParam === VAULT_ENTITY_STATUS.DELETED) {
+  const status = parseVaultStatusParam(sp.status);
+  if (status === VAULT_ENTITY_STATUS.DELETED) {
     redirect("/dashboard/notes");
   }
 
-  const isArchivedList = statusParam === VAULT_ENTITY_STATUS.ARCHIVED;
+  const isArchivedList = status === VAULT_ENTITY_STATUS.ARCHIVED;
 
   const actor = {
     id:       session.user.id,
@@ -44,6 +59,7 @@ export default async function NotesPage({
     isActive: session.user.isActive,
   };
   const canEdit = canUserPerformAction(actor, null, "note", "create");
+  const canUnarchive = canUserPerformAction(actor, null, "note", "delete");
   const showAddNote =
     !isArchivedList && (canEdit || actor.role === Role.USER);
 
@@ -58,120 +74,204 @@ export default async function NotesPage({
 
   const allUsers = !isArchivedList
     ? await prisma.user.findMany({
-        where:   { isActive: true },
+        where: {
+          isActive: true,
+          // Superadmins / Admins / Moderators implicitly see all general notes;
+          // access management UI should only list USER / INTERN as share targets.
+          role: { in: [Role.USER, Role.INTERN] },
+        },
         select:  { id: true, name: true, email: true, role: true },
         orderBy: { name: "asc" },
       })
     : [];
 
   return (
-    <div className="space-y-6">
-
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">{pageTitle}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{pageDescription}</p>
+    <div className="space-y-10 pb-20 max-w-7xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700 relative">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 sticky top-0 z-20 pt-4 bg-transparent px-2">
+        <div className="space-y-1">
+          <h1 className="text-3xl font-black tracking-tight text-[#0c1421] drop-shadow-sm uppercase">{pageTitle}</h1>
+          <p className="text-base text-slate-500 font-medium tracking-tight">
+            {pageDescription}
+          </p>
         </div>
-        {showAddNote && <AddNoteDialog />}
+        <div className="flex items-center gap-4">
+          {showAddNote && <AddNoteDialog />}
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-white/40 backdrop-blur-md rounded-full border border-white/40 shadow-sm">
+            <div className="size-1.5 rounded-full animate-pulse bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.5)]" />
+            <span className="text-[9px] font-black tracking-widest text-[#0c1421] uppercase">Current Notes</span>
+          </div>
+        </div>
       </div>
 
-      <Separator />
-
       {notes.length === 0 ? (
-        <div className="rounded-xl border border-dashed bg-muted/20 p-16 text-center">
-          <p className="text-sm text-muted-foreground">
+        <div className="bg-white/30 backdrop-blur-md rounded-[2.5rem] border border-white/40 p-24 text-center space-y-4 animate-in fade-in zoom-in duration-700">
+          <div className="size-16 bg-slate-100 rounded-2xl mx-auto flex items-center justify-center text-slate-400">
+            <FileText className="size-8" />
+          </div>
+          <p className="text-slate-500 font-bold uppercase tracking-widest text-xs">
             {isArchivedList
-              ? "No archived notes."
-              : `No general notes yet.${showAddNote ? " Create one above." : ""}`}
+              ? "Archival repository is currently empty."
+              : `No data entries in the general directory.`}
           </p>
         </div>
       ) : isArchivedList ? (
-        <ul className="space-y-2">
+        <ul className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {notes.map((note) => (
-            <li key={note.id}>
-              <Link
-                href={`/dashboard/notes/${note.id}`}
-                className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card px-4 py-3 text-sm shadow-sm transition-colors hover:bg-muted/30"
-              >
-                <span className="font-medium text-foreground">{note.title}</span>
-                <div className="flex flex-wrap items-center gap-2">
-                  {note.type === NoteType.NORMAL ? (
-                    <Badge variant="outline" className="text-[10px]">
-                      General
-                    </Badge>
-                  ) : (
-                    <Badge variant="secondary" className="text-[10px]">
-                      {note.project?.name ?? "Project"}
-                    </Badge>
-                  )}
-                  <span className="text-xs text-muted-foreground">{formatDate(note.updatedAt)}</span>
-                </div>
-              </Link>
+            <li key={note.id} className="group">
+              <div className="flex flex-col h-full bg-white/30 backdrop-blur-md border border-white/40 p-8 rounded-[2rem] shadow-sm transition-all hover:bg-white/50 hover:shadow-2xl">
+                <Link
+                  href={`/dashboard/notes/${note.id}`}
+                  className="flex-1 flex flex-col"
+                >
+                  <div className="flex items-center justify-between gap-4 mb-4">
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">
+                      Archival Log
+                    </span>
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                      {formatDate(note.updatedAt)}
+                    </span>
+                  </div>
+                  <h3 className="text-lg font-black text-[#0c1421] truncate uppercase tracking-tight mb-2">
+                    {note.title}
+                  </h3>
+                  <div className="mt-auto pt-4 border-t border-white/10 flex items-center justify-between">
+                    {note.type === NoteType.NORMAL ? (
+                      <div className="px-2.5 py-0.5 rounded-full border border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                        General
+                      </div>
+                    ) : (
+                      <div className="px-2.5 py-0.5 rounded-full border border-indigo-500/20 bg-indigo-500/10 text-[10px] font-black uppercase tracking-widest text-indigo-600">
+                        {note.project?.name ?? "Project"}
+                      </div>
+                    )}
+                    <ChevronRight className="size-4 text-slate-300 group-hover:text-blue-500 group-hover:translate-x-1 transition-all" />
+                  </div>
+                </Link>
+                {canUnarchive && (
+                  <div className="mt-4 flex justify-end">
+                    <UnarchiveNoteButton noteId={note.id} noteTitle={note.title} />
+                  </div>
+                )}
+              </div>
             </li>
           ))}
         </ul>
       ) : (
-        <div className="space-y-3">
-          {notes.map((note) => (
-            <div
-              key={note.id}
-              className="rounded-xl border bg-card p-5 shadow-sm"
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="font-semibold">{note.title}</h3>
-                    <Badge variant="outline" className="text-[10px]">
-                      General
-                    </Badge>
+        <div className="grid gap-6">
+          {notes.map((note) => {
+            const preview = getNotePreview(note.content);
+            return (
+              <div
+                key={note.id}
+                className="group relative flex cursor-pointer flex-col bg-white/40 backdrop-blur-md border border-white/40 p-6 rounded-2xl shadow-sm transition-all hover:bg-white/60 hover:shadow-xl animate-in fade-in slide-in-from-bottom-2 duration-500"
+              >
+                <Link
+                  href={`/dashboard/notes/${note.id}`}
+                  className="absolute inset-0 z-[1] rounded-2xl"
+                  aria-label={`Open note ${note.title}`}
+                />
+                <div className="relative z-[2] flex flex-col pointer-events-none">
+                  <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-6">
+                    <div className="min-w-0 flex-1 space-y-4">
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <div className="p-2 bg-[#0c1421] text-white rounded-xl shadow-lg ring-4 ring-[#0c1421]/5">
+                          <FileText className="size-4" />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-3 flex-wrap">
+                            <h3 className="text-lg font-black text-[#0c1421] tracking-tight uppercase leading-none">
+                              {note.title}
+                            </h3>
+                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                              {formatDate(note.createdAt)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      {preview && (
+                        <div className="relative pl-4 border-l-2 border-blue-500/20 py-1 text-sm text-slate-600 truncate">
+                          {preview}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="relative z-[3] flex shrink-0 items-center justify-end gap-2 lg:self-start bg-white/50 backdrop-blur-md p-1.5 rounded-xl border border-white/40 shadow-inner pointer-events-auto">
+                      <CopyNoteButton title={note.title} content={note.content} />
+
+                      {canEdit && (
+                        <EditNoteDialog
+                          noteId={note.id}
+                          initialTitle={note.title}
+                          initialContent={note.content}
+                        />
+                      )}
+                      {canEdit && (
+                        <ManageAccessDialog
+                          type="note"
+                          resourceId={note.id}
+                          resourceName={note.title}
+                          currentAccess={note.sharedWith}
+                          allUsers={allUsers}
+                        />
+                      )}
+                      {canEdit && (
+                        <ArchiveNoteButton noteId={note.id} noteTitle={note.title} />
+                      )}
+                    </div>
                   </div>
-                  <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">
-                    {note.content}
-                  </p>
-                </div>
 
-                <div className="flex shrink-0 items-center gap-1">
-                  <CopyNoteButton title={note.title} content={note.content} />
+                  <div className="mt-10 pt-8 border-t border-white/10 flex flex-wrap items-center gap-8">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                        Origin User
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <div className="size-1.5 bg-blue-500 rounded-full shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
+                        <span className="text-[10px] font-black text-[#0c1421] uppercase tracking-wider">
+                          {note.owner.name ?? note.owner.email}
+                        </span>
+                      </div>
+                    </div>
 
-                  {canEdit && (
-                    <EditNoteDialog
-                      noteId={note.id}
-                      initialTitle={note.title}
-                      initialContent={note.content}
-                    />
-                  )}
-                  {canEdit && (
-                    <ManageAccessDialog
-                      type="note"
-                      resourceId={note.id}
-                      resourceName={note.title}
-                      currentAccess={note.sharedWith}
-                      allUsers={allUsers}
-                    />
-                  )}
-                  {canEdit && (
-                    <ArchiveNoteButton noteId={note.id} noteTitle={note.title} />
-                  )}
+                    {note.sharedWith.length > 0 && (
+                      <>
+                        <div className="w-px h-8 bg-white/20" />
+                        <div className="flex flex-col gap-1">
+                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                            Shared Nodes
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <div className="size-1.5 bg-indigo-500 rounded-full shadow-[0_0_8px_rgba(99,102,241,0.5)]" />
+                            <span className="text-[10px] font-black text-[#0c1421] uppercase tracking-wider">
+                              {note.sharedWith.length} Active Node
+                              {note.sharedWith.length !== 1 ? "s" : ""}
+                            </span>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
-
-              <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
-                <span>By {note.owner.name ?? note.owner.email}</span>
-                <span>·</span>
-                <span>{formatDate(note.createdAt)}</span>
-                {note.sharedWith.length > 0 && (
-                  <>
-                    <span>·</span>
-                    <span>
-                      Shared with {note.sharedWith.length} user{note.sharedWith.length !== 1 ? "s" : ""}
-                    </span>
-                  </>
-                )}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
+      
+      <footer className="pt-24 border-t border-white/20">
+        <div className="flex flex-col md:flex-row items-center justify-between gap-8 text-center md:text-left">
+          <div className="space-y-1">
+            <p className="text-xs font-black text-[#0c1421] uppercase tracking-[0.2em]">Notes Vault</p>
+            <p className="text-[10px] text-slate-400">All data points are synchronized across the vault infrastructure.</p>
+          </div>
+          <div className="flex items-center gap-4">
+             <Link href={isArchivedList ? "/dashboard/notes" : `/dashboard/notes?status=${VAULT_ENTITY_STATUS.ARCHIVED}`} className="text-[10px] font-black text-blue-500 hover:text-blue-600 uppercase tracking-widest transition-colors underline-offset-4 hover:underline">
+               {isArchivedList ? "Access Primary Terminal" : "Archived Notes"}
+             </Link>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

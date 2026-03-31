@@ -44,17 +44,19 @@ export function noteWhereForVaultRead(actor: { role: Role }) {
 export type VaultEntityStatusValue =
   (typeof VAULT_ENTITY_STATUS)[keyof typeof VAULT_ENTITY_STATUS];
 
-/** Parses `?status=` from the URL for project/note vault lists. */
+/** Parses `?status=` from the URL for project/note vault lists (case-insensitive). */
 export function parseVaultStatusParam(
   raw: string | string[] | undefined,
 ): VaultEntityStatusValue {
   const v = Array.isArray(raw) ? raw[0] : raw;
+  const normalized =
+    typeof v === "string" ? v.trim().toUpperCase() : undefined;
   if (
-    v === VAULT_ENTITY_STATUS.ACTIVE ||
-    v === VAULT_ENTITY_STATUS.ARCHIVED ||
-    v === VAULT_ENTITY_STATUS.DELETED
+    normalized === VAULT_ENTITY_STATUS.ACTIVE ||
+    normalized === VAULT_ENTITY_STATUS.ARCHIVED ||
+    normalized === VAULT_ENTITY_STATUS.DELETED
   ) {
-    return v;
+    return normalized;
   }
   return VAULT_ENTITY_STATUS.ACTIVE;
 }

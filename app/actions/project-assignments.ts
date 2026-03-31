@@ -6,6 +6,7 @@ import { logActivity } from "@/lib/activity-log";
 import { prisma } from "@/lib/prisma";
 import { assertActiveVaultSession } from "@/lib/session-guards";
 import { vaultWhereActive } from "@/lib/vault-entity-status";
+import { eventBus } from "@/lib/event-bus";
 
 const ROLE_RANK: Record<Role, number> = {
   INTERN: 0, USER: 1, MODERATOR: 2, ADMIN: 3, SUPERADMIN: 4,
@@ -174,9 +175,28 @@ export async function removeProjectFromUser(
   const guard = await assertCanManageTargetProjects(vault.user.role, vault.user.id, tid);
   if (!guard.ok) return { success: false, error: guard.error };
 
-  await prisma.projectMember.deleteMany({
+  const result = await prisma.projectMember.deleteMany({
     where: { userId: tid, projectId: pid },
   });
+  if (result.count === 0) {
+    return { success: false, error: "No matching project assignment found for this user." };
+  }
+
+  await logActivity({
+    actorId:    vault.user.id,
+    action:     ActivityAction.REMOVE,
+    entityType: "project_member",
+    entityId:   pid,
+    label:      `Removed user ${tid} from project`,
+  });
+
+  // Notify the affected user so their client refreshes immediately
+  eventBus.emit("vault_event", {
+    type:    "ACCESS_REVOKED",
+    userId:  tid,
+    projectId: pid,
+  });
+
   return { success: true };
 }
 
@@ -212,6 +232,13 @@ export async function leaveProject(projectId: string): Promise<ProjectAssignment
     entityType: "project_member",
     entityId:   pid,
     label:      "Left project assignment",
+  });
+
+  // Notify this user so open dashboards / project views refresh
+  eventBus.emit("vault_event", {
+    type:    "ACCESS_REVOKED",
+    userId:  vault.user.id,
+    projectId: pid,
   });
 
   return { success: true };

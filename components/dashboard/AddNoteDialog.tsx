@@ -66,6 +66,29 @@ export default function AddNoteDialog({ projectId, projectName }: Props) {
     ? `Add Note — ${projectName ?? "Project"}`
     : "Add General Note";
 
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData?.items;
+    if (!items || items.length === 0) return;
+    const fileItem = Array.from(items).find(
+      (it) => it.kind === "file" && it.type.startsWith("image/"),
+    );
+    if (!fileItem) return;
+
+    const file = fileItem.getAsFile();
+    if (!file) return;
+
+    e.preventDefault();
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = typeof reader.result === "string" ? reader.result : "";
+      if (!dataUrl) return;
+      const snippet = `\n\n![](${dataUrl})\n\n`;
+      setContent((prev) => prev + snippet);
+    };
+    reader.readAsDataURL(file);
+  };
+
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) resetAndClose(); else setOpen(true); }}>
       <DialogTrigger
@@ -104,6 +127,7 @@ export default function AddNoteDialog({ projectId, projectName }: Props) {
               onChange={(e) => setContent(e.target.value)}
               placeholder="Write your note here…"
               disabled={isPending}
+              onPaste={handlePaste}
               className="w-full resize-y rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
             />
           </div>

@@ -3,11 +3,6 @@
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { decryptSecretValue } from "@/app/actions/decrypt";
 
 // Two icons rendered inline to avoid an extra icon-library dependency.
@@ -82,29 +77,21 @@ export default function CopyButton({
   };
 
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            variant={variant}
-            size="sm"
-            onClick={handleCopy}
-            disabled={isPending}
-            aria-label={copied ? "Copied!" : `Copy secret value`}
-            className="h-7 gap-1.5 px-2 text-xs font-medium"
-          >
-            {copied ? (
-              <CheckIcon className="h-3.5 w-3.5 text-green-600" />
-            ) : (
-              <CopyIcon className="h-3.5 w-3.5" />
-            )}
-            {copied ? "Copied!" : label}
-          </Button>
-        }
-      />
-      <TooltipContent side="top">
-        <p>{copied ? "Value copied to clipboard" : "Decrypt and copy to clipboard"}</p>
-      </TooltipContent>
-    </Tooltip>
+    <Button
+      variant={variant}
+      size="sm"
+      onClick={handleCopy}
+      disabled={isPending}
+      aria-label={copied ? "Copied!" : "Copy secret value"}
+      title={copied ? "Copied!" : "Copy"}
+      className="h-7 gap-1.5 px-2 text-xs font-medium"
+    >
+      {copied ? (
+        <CheckIcon className="h-3.5 w-3.5 text-green-600" />
+      ) : (
+        <CopyIcon className="h-3.5 w-3.5" />
+      )}
+      {copied ? "Copied!" : label}
+    </Button>
   );
 }
