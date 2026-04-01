@@ -29,7 +29,7 @@ export default async function ProjectsPage({
   if (status === VAULT_ENTITY_STATUS.DELETED) {
     redirect("/dashboard/projects");
   }
-  const statusWhere = { status };
+  const statusWhere = { status, parentId: null };
 
   const actor = {
     id:       session.user.id,
@@ -101,21 +101,25 @@ export default async function ProjectsPage({
   return (
     <div className="space-y-10 pb-20 max-w-7xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 pointer-events-none sticky top-0 z-20 pt-4 bg-transparent px-2">
-        <div className="space-y-1 pointer-events-auto">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 sticky top-0 z-20 pt-4 bg-transparent px-2">
+        <div className="space-y-1">
           <h1 className="text-3xl font-black tracking-tight text-[#0c1421] drop-shadow-sm uppercase">{pageTitle}</h1>
           <p className="text-base text-slate-500 font-medium tracking-tight">
             {pageDescription}
           </p>
         </div>
-        <div className="flex items-center gap-4 pointer-events-auto">
+        <div className="flex items-center gap-4">
           {canCreate && isLiveList && <CreateProjectDialog />}
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-white/40 backdrop-blur-md rounded-full border border-white/40 shadow-sm">
-            <div className={`size-1.5 rounded-full animate-pulse ${status === VAULT_ENTITY_STATUS.ARCHIVED ? "bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]" : "bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]"}`} />
-            <span className="text-[9px] font-black tracking-widest text-[#0c1421] uppercase">
-              {status === VAULT_ENTITY_STATUS.ARCHIVED ? "Archival Sync" : "active projects"}
-            </span>
-          </div>
+          <Link
+            href={
+              isLiveList
+                ? `/dashboard/projects?status=${VAULT_ENTITY_STATUS.ARCHIVED}`
+                : "/dashboard/projects"
+            }
+            className="text-[9px] font-black text-blue-500 hover:text-blue-600 uppercase tracking-widest underline-offset-4 hover:underline"
+          >
+            {isLiveList ? "Access Archived Projects" : "Switch to Active Projects"}
+          </Link>
         </div>
       </div>
 
@@ -140,17 +144,9 @@ export default async function ProjectsPage({
       )}
 
       <footer className="pt-12 border-t border-white/20">
-        <div className="flex flex-col md:flex-row items-center justify-between gap-6 text-center md:text-left">
-          <div className="space-y-0.5">
-            <p className="text-[10px] font-black text-[#0c1421] uppercase tracking-[0.2em]">Project Management Terminal</p>
-            <p className="text-[9px] text-slate-400">All data streams are encrypted under AES-256 protocols.</p>
-          </div>
-          <div className="flex items-center gap-6">
-             <Link href={isLiveList ? `/dashboard/projects?status=${VAULT_ENTITY_STATUS.ARCHIVED}` : "/dashboard/projects"} className="text-[9px] font-black text-blue-500 hover:text-blue-600 uppercase tracking-widest transition-colors underline-offset-4 hover:underline">
-               {isLiveList ? "Access Archived Projects" : "Switch to Primary Pipeline"}
-             </Link>
-          </div>
-        </div>
+        <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-center">
+          Credential Vault
+        </p>
       </footer>
     </div>
   );

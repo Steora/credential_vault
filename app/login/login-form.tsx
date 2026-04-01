@@ -15,20 +15,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-function EyeIcon({ open }: { open: boolean }) {
-  return open ? (
-    <svg className="h-4 w-4" viewBox="0 0 16 16" fill="none" aria-hidden>
-      <path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z" stroke="currentColor" strokeWidth="1.25" strokeLinejoin="round" />
-      <circle cx="8" cy="8" r="2" stroke="currentColor" strokeWidth="1.25" />
-    </svg>
-  ) : (
-    <svg className="h-4 w-4" viewBox="0 0 16 16" fill="none" aria-hidden>
-      <path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z" stroke="currentColor" strokeWidth="1.25" strokeLinejoin="round" />
-      <circle cx="8" cy="8" r="2" stroke="currentColor" strokeWidth="1.25" />
-      <path d="M2 2l12 12" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" />
-    </svg>
-  );
-}
+import { Mail, Key, ArrowRight } from "lucide-react";
 
 type LoginFormProps = {
   csrfToken:   string;
@@ -36,85 +23,76 @@ type LoginFormProps = {
   urlError:    string | null;
 };
 
-/**
- * Classic form POST to Auth.js credentials callback — no client-side fetch, so it
- * avoids Turbopack / browser environments where `signIn()` from `next-auth/react` fails.
- */
 export default function LoginForm({ csrfToken, callbackUrl, urlError }: LoginFormProps) {
-  const [showPassword, setShowPassword] = useState(false);
-
   return (
-    <Card className="w-full max-w-sm shadow-lg">
-      <CardHeader className="space-y-1 pb-4">
-        <CardTitle className="text-2xl font-semibold tracking-tight">
-          Sign in
-        </CardTitle>
-        <CardDescription>
-          Enter your credentials to access the vault.
-        </CardDescription>
-      </CardHeader>
+    <div className="w-full max-w-[400px] flex flex-col items-center">
+      <div className="w-full space-y-2 mb-10 text-left">
+        <h1 className="text-4xl font-black text-[#0c1421] tracking-tight">Sign in</h1>
+        <p className="text-sm font-medium text-slate-500 leading-relaxed max-w-[280px]">
+          Enter your credentials to access the secure environment.
+        </p>
+      </div>
 
-      <CardContent>
-        <form method="post" action="/api/auth/callback/credentials" className="space-y-4">
+      <div className="w-full bg-white border border-slate-100 rounded-2xl p-8 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.08)]">
+        <form method="post" action="/api/auth/callback/credentials" className="space-y-6">
           <input type="hidden" name="csrfToken" value={csrfToken} />
           <input type="hidden" name="callbackUrl" value={callbackUrl} />
 
-          <div className="space-y-1.5">
-            <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
-              name="email"
-              type="email"
-              autoComplete="email"
-              placeholder="you@example.com"
-              required
-            />
+          <div className="space-y-2.5">
+            <Label htmlFor="email" className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Email Address</Label>
+            <div className="relative group">
+              <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors">
+                <Mail className="size-4" strokeWidth={2.5} />
+              </div>
+              <Input
+                id="email"
+                name="email"
+                type="email"
+                autoComplete="email"
+                placeholder="name@company.com"
+                required
+                className="h-12 pl-11 bg-slate-100 border-transparent rounded-xl focus-visible:bg-white focus-visible:ring-2 focus-visible:ring-blue-500/10 focus-visible:border-slate-200 transition-all text-sm font-medium"
+              />
+            </div>
           </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="password">Password</Label>
-            <div className="relative">
+          <div className="space-y-2.5">
+            <Label htmlFor="password" className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Password</Label>
+            <div className="relative group">
+              <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors">
+                <Key className="size-4" strokeWidth={2.5} />
+              </div>
               <Input
                 id="password"
                 name="password"
-                type={showPassword ? "text" : "password"}
+                type="password"
                 autoComplete="current-password"
                 placeholder="••••••••"
                 required
-                className="pr-10"
+                className="h-12 pl-11 bg-slate-100 border-transparent rounded-xl focus-visible:bg-white focus-visible:ring-2 focus-visible:ring-blue-500/10 focus-visible:border-slate-200 transition-all text-sm font-medium"
               />
-              <button
-                type="button"
-                onClick={() => setShowPassword((v) => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                aria-label={showPassword ? "Hide password" : "Show password"}
-                tabIndex={-1}
-              >
-                <EyeIcon open={showPassword} />
-              </button>
             </div>
           </div>
 
           {urlError && (
-            <p className="text-sm text-destructive" role="alert">
+            <p className="text-[11px] font-bold text-red-500 uppercase tracking-widest bg-red-50 p-3 rounded-lg border border-red-100" role="alert">
               {urlError}
             </p>
           )}
 
-          <Button type="submit" className="w-full">
+          <Button type="submit" className="w-full h-14 bg-[#0c1421] hover:bg-black text-white rounded-xl font-black uppercase tracking-widest text-[11px] flex items-center justify-center gap-2 shadow-lg shadow-blue-900/10 active:scale-[0.98] transition-all">
             Sign in
+            <ArrowRight className="size-4" />
           </Button>
         </form>
-      </CardContent>
+      </div>
 
-      <CardFooter className="justify-center pt-0">
-        <p className="text-sm text-muted-foreground">
-          Don&apos;t have an account?{" "}
-          <Link href="/register" className="font-medium text-foreground underline-offset-4 hover:underline">
-            Sign up
-          </Link>
-        </p>
-      </CardFooter>
-    </Card>
+      <p className="mt-8 text-sm font-medium text-slate-400">
+        Don&apos;t have an account?{" "}
+        <Link href="/register" className="text-[#0c1421] font-black hover:underline underline-offset-4">
+          Sign up
+        </Link>
+      </p>
+    </div>
   );
 }

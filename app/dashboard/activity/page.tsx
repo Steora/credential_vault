@@ -78,9 +78,9 @@ export default async function ActivityPage() {
     <div className="space-y-10 pb-20 max-w-5xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 pointer-events-none sticky top-0 z-20 pt-4 bg-transparent">
         <div className="space-y-1 pointer-events-auto">
-          <h1 className="text-3xl font-black tracking-tight text-[#0c1421] drop-shadow-sm uppercase">System Audit</h1>
+          <h1 className="text-3xl font-black tracking-tight text-[#0c1421] drop-shadow-sm uppercase">system activity</h1>
           <p className="text-base text-slate-500 font-medium tracking-tight">
-            Real-time ledger of vault operations and administrative mutations.
+            Real-time update of all vault operations.
           </p>
         </div>
         <div className="flex items-center gap-2 px-3 py-1.5 bg-white/40 backdrop-blur-md rounded-full border border-white/40 shadow-sm pointer-events-auto">
@@ -163,7 +163,7 @@ export default async function ActivityPage() {
 
       <footer className="pt-12 text-center">
         <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
-          End of Audit Stream • <Link href="/dashboard" className="text-blue-500 hover:text-blue-600 transition-colors">Access Terminal Dashboard</Link>
+          end of activity • <Link href="/dashboard" className="text-blue-500 hover:text-blue-600 transition-colors">access dashboard</Link>
         </p>
       </footer>
     </div>

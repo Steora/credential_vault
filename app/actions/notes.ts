@@ -191,7 +191,8 @@ export async function saveNote(rawInput: SaveNoteInput): Promise<SaveNoteResult>
       content,
       type,
       projectId: type === NoteType.PROJECT_BASED ? (projectId ?? null) : null,
-      ownerId:   vault.user.id,
+      ownerId:     vault.user.id,
+      updatedById: vault.user.id,
     },
     select: { id: true },
   });
@@ -219,7 +220,7 @@ const UpdateNoteSchema = z.object({
 
 export type UpdateNoteInput  = z.infer<typeof UpdateNoteSchema>;
 export type UpdateNoteResult =
-  | { success: true }
+  | { success: true; pendingApproval?: boolean }
   | { success: false; error: string };
 
 /**
@@ -232,7 +233,10 @@ export async function updateNote(rawInput: UpdateNoteInput): Promise<UpdateNoteR
   if (!vault.ok) return { success: false, error: vault.error };
 
   const actor = { id: vault.user.id, role: vault.user.role };
-  if (!canUserPerformAction(actor, null, "note", "update")) {
+  const isUserEditor = actor.role === Role.USER;
+
+  // Moderators and above still use the central permission check.
+  if (!isUserEditor && !canUserPerformAction(actor, null, "note", "update")) {
     return {
       success: false,
       error: `Role "${vault.user.role}" is not permitted to edit notes.`,
@@ -251,20 +255,96 @@ export async function updateNote(rawInput: UpdateNoteInput): Promise<UpdateNoteR
 
   const { noteId, title, content } = parsed.data;
 
-  const existing = await prisma.note.findFirst({
-    where:  { id: noteId, status: VAULT_ENTITY_STATUS.ACTIVE },
-    select: { id: true, type: true, projectId: true },
-  });
-  if (!existing) return { success: false, error: "Note not found." };
+  // ------------------------------------------------------------------
+  // 3. Load note with appropriate access guard
+  // ------------------------------------------------------------------
 
-  if (existing.type === NoteType.PROJECT_BASED && existing.projectId) {
-    const scope = await assertModeratorAssignedToProject(actor, existing.projectId);
-    if (!scope.ok) return { success: false, error: scope.error };
+  let existing:
+    | { id: string; type: NoteType; projectId: string | null }
+    | null = null;
+
+  if (isUserEditor) {
+    // USER: must have access (owner or explicitly shared).
+    existing = await prisma.note.findFirst({
+      where: {
+        id:     noteId,
+        status: VAULT_ENTITY_STATUS.ACTIVE,
+        OR: [
+          { ownerId: actor.id },
+          { sharedWith: { some: { id: actor.id } } },
+        ],
+      },
+      select: { id: true, type: true, projectId: true },
+    });
+
+    if (!existing) {
+      return {
+        success: false,
+        error:  "You can only edit notes you have access to.",
+      };
+    }
+
+    // USER path — create a pending edit request instead of updating immediately.
+    if (existing.type === NoteType.PROJECT_BASED && existing.projectId) {
+      const scope = await assertUserInternAssignedToProject(actor, existing.projectId);
+      if (!scope.ok) return { success: false, error: scope.error };
+    }
+
+    const pending = await prisma.pendingNoteSubmission.create({
+      data: {
+        submitterId:   actor.id,
+        title,
+        content,
+        type:         existing.type,
+        projectId:    existing.type === NoteType.PROJECT_BASED ? existing.projectId : null,
+        originalNoteId: existing.id,
+      },
+      select: { id: true },
+    });
+
+    await logActivity({
+      actorId:    vault.user.id,
+      action:     ActivityAction.UPDATE,
+      entityType: "pending_note",
+      entityId:   pending.id,
+      label:      `Edit request: ${title}`,
+    });
+
+    const admins = await prisma.user.findMany({
+      where: { isActive: true, role: { in: [Role.ADMIN, Role.SUPERADMIN] } },
+      select: { email: true },
+    });
+
+    const summaryLine =
+      existing.type === NoteType.PROJECT_BASED && existing.projectId
+        ? `Edit project-based note — title: ${title}`
+        : `Edit general note — title: ${title}`;
+
+    await sendPendingApprovalNotificationEmail({
+      toAddresses:    admins.map((a) => a.email),
+      kind:           "note",
+      summaryLine,
+      submitterLabel: vault.user.email ?? vault.user.id,
+    }).catch(() => {});
+
+    return { success: true, pendingApproval: true };
+  } else {
+    // MODERATOR and above: standard update path, but still require the note to exist.
+    existing = await prisma.note.findFirst({
+      where:  { id: noteId, status: VAULT_ENTITY_STATUS.ACTIVE },
+      select: { id: true, type: true, projectId: true },
+    });
+    if (!existing) return { success: false, error: "Note not found." };
+
+    if (existing.type === NoteType.PROJECT_BASED && existing.projectId) {
+      const scope = await assertModeratorAssignedToProject(actor, existing.projectId);
+      if (!scope.ok) return { success: false, error: scope.error };
+    }
   }
 
   await prisma.note.update({
     where: { id: noteId },
-    data:  { title, content },
+    data:  { title, content, updatedById: vault.user.id },
   });
 
   await logActivity({
@@ -316,7 +396,7 @@ export async function archiveNote(noteId: string): Promise<ArchiveNoteResult> {
 
   await prisma.note.update({
     where: { id: noteId },
-    data:  { status: VAULT_ENTITY_STATUS.ARCHIVED },
+    data:  { status: VAULT_ENTITY_STATUS.ARCHIVED, updatedById: vault.user.id },
   });
 
   await logActivity({
@@ -365,7 +445,7 @@ export async function unarchiveNote(noteId: string): Promise<ArchiveNoteResult> 
 
   await prisma.note.update({
     where: { id: noteId },
-    data:  { status: VAULT_ENTITY_STATUS.ACTIVE },
+    data:  { status: VAULT_ENTITY_STATUS.ACTIVE, updatedById: vault.user.id },
   });
 
   await logActivity({

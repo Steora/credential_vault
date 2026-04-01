@@ -35,6 +35,12 @@ export default async function NoteDetailPage({
 
   const isArchived = note.status === VAULT_ENTITY_STATUS.ARCHIVED;
 
+  const createdByLabel = note.owner.name ?? note.owner.email ?? null;
+  const updatedByLabel =
+    note.updatedBy?.name ??
+    note.updatedBy?.email ??
+    (note.owner.name ?? note.owner.email ?? null);
+
   const backHref =
     isArchived ? "/dashboard/notes?status=ARCHIVED" : "/dashboard/notes";
   const backLabel = isArchived ? "Archived notes" : "General notes";
@@ -58,31 +64,44 @@ export default async function NoteDetailPage({
           {backLabel}
         </Link>
 
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <h1 className="text-2xl font-bold tracking-tight">{note.title}</h1>
-          {isArchived && (
-            <span className="rounded-md border border-muted-foreground/30 bg-muted/50 px-2 py-0.5 text-xs font-medium text-muted-foreground">
-              Archived
+        <div className="mt-3 flex flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-2xl font-bold tracking-tight">{note.title}</h1>
+            {isArchived && (
+              <span className="rounded-md border border-muted-foreground/30 bg-muted/50 px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                Archived
+              </span>
+            )}
+            {note.type === NoteType.NORMAL ? (
+              <Badge variant="outline" className="text-[10px]">
+                General
+              </Badge>
+            ) : (
+              <Badge variant="secondary" className="text-[10px]">
+                {note.project ? (
+                  <Link
+                    href={`/dashboard/projects/${note.project.id}`}
+                    className="underline-offset-2 hover:underline"
+                  >
+                    {note.project.name}
+                  </Link>
+                ) : (
+                  "Project"
+                )}
+              </Badge>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <span>
+              Created on {formatDate(note.createdAt)}
+              {createdByLabel && <> by {createdByLabel}</>}
             </span>
-          )}
-          {note.type === NoteType.NORMAL ? (
-            <Badge variant="outline" className="text-[10px]">
-              General
-            </Badge>
-          ) : (
-            <Badge variant="secondary" className="text-[10px]">
-              {note.project ? (
-                <Link
-                  href={`/dashboard/projects/${note.project.id}`}
-                  className="underline-offset-2 hover:underline"
-                >
-                  {note.project.name}
-                </Link>
-              ) : (
-                "Project"
-              )}
-            </Badge>
-          )}
+            <span>·</span>
+            <span>
+              Last modified on {formatDate(note.updatedAt)}
+              {updatedByLabel && <> by {updatedByLabel}</>}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -95,24 +114,41 @@ export default async function NoteDetailPage({
               urlTransform={(url) =>
                 url.startsWith("data:") ? url : defaultUrlTransform(url)
               }
+              components={{
+                img({ src, alt }) {
+                  if (!src) return null;
+                  return (
+                    <figure className="my-4 flex flex-col items-start gap-1">
+                      <a
+                        href={src}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-xs font-medium text-blue-600 hover:underline"
+                      >
+                        Open image in new tab
+                      </a>
+                      <img
+                        src={src}
+                        alt={alt ?? "Note image"}
+                        className="max-h-64 w-auto rounded-lg border border-border object-contain shadow-sm"
+                      />
+                    </figure>
+                  );
+                },
+              }}
             >
               {note.content}
             </ReactMarkdown>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            <span>By {note.owner.name ?? note.owner.email}</span>
-            <span>·</span>
-            <span>{formatDate(note.createdAt)}</span>
-            {note.sharedWith.length > 0 && (
-              <>
-                <span>·</span>
-                <span>
-                  Shared with {note.sharedWith.length} user{note.sharedWith.length !== 1 ? "s" : ""}
-                </span>
-              </>
-            )}
-          </div>
+          {note.sharedWith.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <span>
+                Shared with {note.sharedWith.length} user
+                {note.sharedWith.length !== 1 ? "s" : ""}
+              </span>
+            </div>
+          )}
         </div>
 
         <div className="flex shrink-0 items-center gap-2">

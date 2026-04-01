@@ -110,6 +110,12 @@ export async function approvePendingSecret(id: string): Promise<ApprovalActionRe
       },
       select: { id: true },
     });
+
+    await tx.project.update({
+      where: { id: pending.projectId },
+      data:  { updatedById: pending.submitterId },
+    });
+
     await tx.pendingSecretSubmission.update({
       where: { id },
       data: {
@@ -118,6 +124,7 @@ export async function approvePendingSecret(id: string): Promise<ApprovalActionRe
         reviewedAt:   new Date(),
       },
     });
+
     return s;
   });
 
@@ -165,44 +172,102 @@ export async function approvePendingNote(id: string): Promise<ApprovalActionResu
   });
   if (!pending) return { success: false, error: "Request not found or already handled." };
 
-  if (pending.type === NoteType.PROJECT_BASED && pending.projectId) {
-    const proj = await prisma.project.findFirst({
-      where: { id: pending.projectId, ...vaultWhereActive },
+  // If originalNoteId is set, this is an EDIT to an existing note.
+  if (pending.originalNoteId) {
+    const existing = await prisma.note.findFirst({
+      where: { id: pending.originalNoteId, ...vaultWhereActive },
       select: { id: true },
     });
-    if (!proj) return { success: false, error: "Linked project no longer exists." };
+    if (!existing) {
+      return { success: false, error: "Linked note no longer exists." };
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const note = await tx.note.update({
+        where: { id: existing.id },
+        data:  {
+          title:       pending.title,
+          content:     pending.content,
+          updatedById: pending.submitterId,
+        },
+        select: { id: true, projectId: true },
+      });
+
+      if (note.projectId) {
+        await tx.project.update({
+          where: { id: note.projectId },
+          data:  { updatedById: pending.submitterId },
+        });
+      }
+
+      await tx.pendingNoteSubmission.update({
+        where: { id },
+        data:  {
+          status:       PendingSubmissionStatus.APPROVED,
+          reviewedById: vault.user.id,
+          reviewedAt:   new Date(),
+        },
+      });
+
+      return note;
+    });
+
+    await logActivity({
+      actorId:    vault.user.id,
+      action:     ActivityAction.UPDATE,
+      entityType: "note",
+      entityId:   updated.id,
+      label:      `Approved note edit: ${pending.title}`,
+    });
+  } else {
+    if (pending.type === NoteType.PROJECT_BASED && pending.projectId) {
+      const proj = await prisma.project.findFirst({
+        where: { id: pending.projectId, ...vaultWhereActive },
+        select: { id: true },
+      });
+      if (!proj) return { success: false, error: "Linked project no longer exists." };
+    }
+
+    const created = await prisma.$transaction(async (tx) => {
+      const note = await tx.note.create({
+        data: {
+          title:     pending.title,
+          content:   pending.content,
+          type:      pending.type,
+          projectId:
+            pending.type === NoteType.PROJECT_BASED ? pending.projectId : null,
+          ownerId:   pending.submitterId,
+        },
+        select: { id: true, projectId: true },
+      });
+
+      if (note.projectId) {
+        await tx.project.update({
+          where: { id: note.projectId },
+          data:  { updatedById: pending.submitterId },
+        });
+      }
+
+      await tx.pendingNoteSubmission.update({
+        where: { id },
+        data: {
+          status:       PendingSubmissionStatus.APPROVED,
+          reviewedById: vault.user.id,
+          reviewedAt:   new Date(),
+        },
+      });
+
+      return note;
+    });
+
+    await logActivity({
+      actorId:    vault.user.id,
+      action:     ActivityAction.CREATE,
+      entityType: "note",
+      entityId:   created.id,
+      label:      `Approved pending note: ${pending.title}`,
+    });
   }
-
-  const created = await prisma.$transaction(async (tx) => {
-    const note = await tx.note.create({
-      data: {
-        title:     pending.title,
-        content:   pending.content,
-        type:      pending.type,
-        projectId:
-          pending.type === NoteType.PROJECT_BASED ? pending.projectId : null,
-        ownerId:   pending.submitterId,
-      },
-      select: { id: true },
-    });
-    await tx.pendingNoteSubmission.update({
-      where: { id },
-      data: {
-        status:       PendingSubmissionStatus.APPROVED,
-        reviewedById: vault.user.id,
-        reviewedAt:   new Date(),
-      },
-    });
-    return note;
-  });
-
-  await logActivity({
-    actorId:    vault.user.id,
-    action:     ActivityAction.CREATE,
-    entityType: "note",
-    entityId:   created.id,
-    label:      `Approved pending note: ${pending.title}`,
-  });
 
   return { success: true };
 }

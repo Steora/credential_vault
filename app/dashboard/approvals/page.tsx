@@ -34,12 +34,12 @@ export default async function ApprovalsPage() {
         <div className="flex flex-col md:flex-row items-center justify-between gap-8 text-center md:text-left">
           <div className="space-y-1">
             <p className="text-xs font-black text-[#0c1421] uppercase tracking-[0.2em]">Approval Terminal</p>
-            <p className="text-[10px] text-slate-400">All approval actions are logged in the immutable audit ledger.</p>
+            <p className="text-[10px] text-slate-400">All approval actions are logged in the activity page.</p>
           </div>
-          <div className="flex items-center gap-2 px-4 py-2 bg-white/40 backdrop-blur-md rounded-full border border-white/40 shadow-sm">
+          {/* <div className="flex items-center gap-2 px-4 py-2 bg-white/40 backdrop-blur-md rounded-full border border-white/40 shadow-sm">
             <div className="size-2 rounded-full animate-pulse bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]" />
             <span className="text-[10px] font-black tracking-widest text-[#0c1421] uppercase">Authority Status: SuperAdmin</span>
-          </div>
+          </div> */}
         </div>
       </footer>
     </div>

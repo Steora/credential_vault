@@ -100,6 +100,9 @@ export async function createProject(
     data: {
       name:        parsed.data.name,
       description: parsed.data.description,
+      createdById: vault.user.id,
+      updatedById: vault.user.id,
+      ownerId:     vault.user.id,
       ...(parsed.data.parentId ? { parentId: parsed.data.parentId } : {}),
     },
     select: { id: true },
@@ -140,10 +143,23 @@ export async function archiveProject(projectId: string): Promise<ProjectResult> 
   }
 
   const subtreeIds = await collectProjectSubtreeIds(projectId);
-  await prisma.project.updateMany({
-    where: { id: { in: subtreeIds } },
-    data:  { status: VAULT_ENTITY_STATUS.ARCHIVED },
+  if (subtreeIds.length === 0) {
+    return { success: false, error: "Project not found." };
+  }
+
+  const [rootId, ...childIds] = subtreeIds;
+
+  await prisma.project.update({
+    where: { id: rootId },
+    data:  { status: VAULT_ENTITY_STATUS.ARCHIVED, updatedById: vault.user.id },
   });
+
+  if (childIds.length > 0) {
+    await prisma.project.updateMany({
+      where: { id: { in: childIds } },
+      data:  { status: VAULT_ENTITY_STATUS.ARCHIVED },
+    });
+  }
 
   await logActivity({
     actorId:    vault.user.id,
@@ -187,10 +203,23 @@ export async function unarchiveProject(projectId: string): Promise<ProjectResult
   }
 
   const subtreeIds = await collectProjectSubtreeIds(projectId);
-  await prisma.project.updateMany({
-    where: { id: { in: subtreeIds }, status: VAULT_ENTITY_STATUS.ARCHIVED },
-    data:  { status: VAULT_ENTITY_STATUS.ACTIVE },
+  if (subtreeIds.length === 0) {
+    return { success: false, error: "Project not found." };
+  }
+
+  const [rootId, ...childIds] = subtreeIds;
+
+  await prisma.project.update({
+    where: { id: rootId },
+    data:  { status: VAULT_ENTITY_STATUS.ACTIVE, updatedById: vault.user.id },
   });
+
+  if (childIds.length > 0) {
+    await prisma.project.updateMany({
+      where: { id: { in: childIds }, status: VAULT_ENTITY_STATUS.ARCHIVED },
+      data:  { status: VAULT_ENTITY_STATUS.ACTIVE },
+    });
+  }
 
   await logActivity({
     actorId:    vault.user.id,

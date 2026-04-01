@@ -63,7 +63,7 @@ export default function PendingApprovalsClient({ initial }: { initial: Approvals
             <div className="p-1.5 bg-[#0c1421] text-white rounded-lg shadow-lg">
               <Key className="size-3.5" />
             </div>
-            <h2 className="text-lg font-black text-[#0c1421] uppercase tracking-tight">Cryptographic Submissions</h2>
+            <h2 className="text-lg font-black text-[#0c1421] uppercase tracking-tight">projects</h2>
           </div>
           
           <div className="rounded-2xl border border-white/40 bg-white/30 backdrop-blur-md overflow-hidden shadow-xl">

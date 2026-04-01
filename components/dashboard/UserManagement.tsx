@@ -346,7 +346,7 @@ export default function UserManagement({ users, currentUserId, currentUserRole }
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search Users by name, email, or credential tier..."
+            placeholder="Search Users by name, email, or role..."
             className="w-full h-12 bg-white/40 border border-white/40 backdrop-blur-md rounded-xl pl-11 pr-4 text-sm font-medium text-[#0c1421] placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 shadow-sm transition-all"
           />
         </div>
@@ -395,7 +395,7 @@ export default function UserManagement({ users, currentUserId, currentUserRole }
       </div>
 
       <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.3em] text-center">
-        Identity Directory Encrypted • AES-256 Protocol Active
+        User Management  - Credential Vault 
       </p>
     </div>
   );

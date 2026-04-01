@@ -40,6 +40,7 @@ const NOTE_SELECT = {
   updatedAt:  true,
   project:    { select: { id: true, name: true } },
   owner:      { select: { id: true, name: true, email: true } },
+  updatedBy:  { select: { id: true, name: true, email: true } },
   sharedWith: { select: { id: true, name: true, email: true } },
 } as const;
 

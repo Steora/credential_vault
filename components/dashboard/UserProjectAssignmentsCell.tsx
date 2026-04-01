@@ -289,7 +289,11 @@ export default function UserProjectAssignmentsCell({
           </span>
           <ChevronDown className={`size-3 transition-transform duration-300 ${open ? "rotate-180" : ""}`} />
         </PopoverTrigger>
-        <PopoverContent side="bottom" align="end" className="w-[24rem] max-w-[min(100vw-2rem,24rem)] p-0 bg-white/60 backdrop-blur-2xl border-white/40 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-300">
+        <PopoverContent
+          side="bottom"
+          align="end"
+          className="w-[24rem] max-w-[min(100vw-2rem,24rem)] max-h-[28rem] overflow-y-auto p-0 bg-white/60 backdrop-blur-2xl border-white/40 rounded-2xl shadow-2xl animate-in fade-in zoom-in-95 duration-300"
+        >
           <div className="bg-[#0c1421]/5 border-b border-white/20 px-4 py-3 space-y-1">
             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#0c1421]">Assigned Projects</p>
             <p className="text-[11px] text-slate-500 font-medium leading-relaxed">
@@ -297,7 +301,7 @@ export default function UserProjectAssignmentsCell({
             </p>
           </div>
 
-          <div className="max-h-56 overflow-y-auto px-2 py-2">
+          <div className="px-2 py-2">
             {assignedProjects.length === 0 ? (
               <div className="px-3 py-6 text-center space-y-2">
                 <div className="size-8 bg-slate-100 rounded-lg mx-auto flex items-center justify-center text-slate-400">

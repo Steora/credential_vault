@@ -30,11 +30,15 @@ interface Props {
   initialContent: string;
 }
 
+const IMAGE_TOKEN = "[image]";
+const IMAGE_MARKDOWN_REGEX = /!\[\]\((data:image[^)]+)\)/g;
+
 export default function EditNoteDialog({ noteId, initialTitle, initialContent }: Props) {
-  const [open,    setOpen]    = useState(false);
-  const [title,   setTitle]   = useState(initialTitle);
-  const [content, setContent] = useState(initialContent);
-  const [error,   setError]   = useState<string | null>(null);
+  const [open,    setOpen]     = useState(false);
+  const [title,   setTitle]    = useState(initialTitle);
+  const [content, setContent]  = useState(initialContent);
+  const [imageUrls, setImageUrls] = useState<string[]>([]);
+  const [error,   setError]    = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
 
@@ -42,7 +46,16 @@ export default function EditNoteDialog({ noteId, initialTitle, initialContent }:
   useEffect(() => {
     if (open) {
       setTitle(initialTitle);
-      setContent(initialContent);
+
+      // Extract existing inline data URLs and replace them with a simple token
+      const urls: string[] = [];
+      const masked = initialContent.replace(IMAGE_MARKDOWN_REGEX, (_match, url: string) => {
+        urls.push(url);
+        return IMAGE_TOKEN;
+      });
+
+      setImageUrls(urls);
+      setContent(masked);
       setError(null);
     }
   }, [open, initialTitle, initialContent]);
@@ -52,15 +65,26 @@ export default function EditNoteDialog({ noteId, initialTitle, initialContent }:
     if (!title.trim())   { setError("Title is required.");   return; }
     if (!content.trim()) { setError("Content is required."); return; }
 
+    // Reconstruct full markdown by swapping tokens back to stored data URLs.
+    let imageIndex = 0;
+    const contentToSave = content.trim().replace(/\[image\]/g, () => {
+      const url = imageUrls[imageIndex++];
+      return url ? `![](${url})` : IMAGE_TOKEN;
+    });
+
     startTransition(async () => {
       const result = await updateNote({
         noteId,
         title:   title.trim(),
-        content: content.trim(),
+        content: contentToSave,
       });
 
       if (result.success) {
-        toast.success("Note updated.");
+        if (result.pendingApproval) {
+          toast.success("Edit submitted for approval.");
+        } else {
+          toast.success("Note updated.");
+        }
         setOpen(false);
         router.refresh();
       } else {
@@ -83,7 +107,10 @@ export default function EditNoteDialog({ noteId, initialTitle, initialContent }:
     reader.onload = () => {
       const dataUrl = typeof reader.result === "string" ? reader.result : "";
       if (!dataUrl) return;
-      const snippet = `\n\n![](${dataUrl})\n\n`;
+
+      // Store the real data URL separately and only show a lightweight token.
+      setImageUrls((prev) => [...prev, dataUrl]);
+      const snippet = `\n\n${IMAGE_TOKEN}\n\n`;
       setContent((prev) => prev + snippet);
     };
     reader.readAsDataURL(file);

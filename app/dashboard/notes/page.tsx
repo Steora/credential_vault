@@ -26,6 +26,11 @@ function formatDate(d: Date) {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
+function getFirstImageSrc(content: string): string | undefined {
+  const match = content.match(/!\[\]\((data:image[^)]+)\)/);
+  return match?.[1];
+}
+
 function getNotePreview(content: string): string {
   if (!content) return "";
   const firstLine = content.split(/\r?\n/)[0] ?? "";
@@ -40,13 +45,14 @@ function getNotePreview(content: string): string {
 export default async function NotesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string }>;
+  searchParams: Promise<{ status?: string; q?: string }>;
 }) {
   const session = await auth();
   if (!session?.user) return null;
 
   const sp = await searchParams;
   const status = parseVaultStatusParam(sp.status);
+  const query = sp.q?.trim() ?? "";
   if (status === VAULT_ENTITY_STATUS.DELETED) {
     redirect("/dashboard/notes");
   }
@@ -63,9 +69,24 @@ export default async function NotesPage({
   const showAddNote =
     !isArchivedList && (canEdit || actor.role === Role.USER);
 
-  const notes = isArchivedList
+  let notes = isArchivedList
     ? await getAccessibleNotesByStatus(actor, VAULT_ENTITY_STATUS.ARCHIVED)
     : await getGeneralNotes(actor);
+
+  const qLower = query.toLowerCase();
+  if (qLower) {
+    notes = notes.filter((note) => {
+      const title = note.title.toLowerCase();
+      const content = note.content.toLowerCase();
+      const owner =
+        (note.owner.name ?? note.owner.email ?? "").toLowerCase();
+      return (
+        title.includes(qLower) ||
+        content.includes(qLower) ||
+        owner.includes(qLower)
+      );
+    });
+  }
 
   const pageTitle = isArchivedList ? "Archived notes" : "General Notes";
   const pageDescription = isArchivedList
@@ -88,20 +109,47 @@ export default async function NotesPage({
   return (
     <div className="space-y-10 pb-20 max-w-7xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700 relative">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 sticky top-0 z-20 pt-4 bg-transparent px-2">
-        <div className="space-y-1">
-          <h1 className="text-3xl font-black tracking-tight text-[#0c1421] drop-shadow-sm uppercase">{pageTitle}</h1>
-          <p className="text-base text-slate-500 font-medium tracking-tight">
-            {pageDescription}
-          </p>
-        </div>
-        <div className="flex items-center gap-4">
-          {showAddNote && <AddNoteDialog />}
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-white/40 backdrop-blur-md rounded-full border border-white/40 shadow-sm">
-            <div className="size-1.5 rounded-full animate-pulse bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.5)]" />
-            <span className="text-[9px] font-black tracking-widest text-[#0c1421] uppercase">Current Notes</span>
+      <div className="sticky top-0 z-20 bg-transparent pt-4 px-2 space-y-4">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+          <div className="space-y-1">
+            <h1 className="text-3xl font-black tracking-tight text-[#0c1421] drop-shadow-sm uppercase">
+              {pageTitle}
+            </h1>
+            <p className="text-base text-slate-500 font-medium tracking-tight">
+              {pageDescription}
+            </p>
+          </div>
+          <div className="flex items-center gap-4">
+            {showAddNote && <AddNoteDialog />}
+            <Link
+              href={
+                isArchivedList
+                  ? "/dashboard/notes"
+                  : `/dashboard/notes?status=${VAULT_ENTITY_STATUS.ARCHIVED}`
+              }
+              className="text-[9px] font-black text-blue-500 hover:text-blue-600 uppercase tracking-widest underline-offset-4 hover:underline"
+            >
+              {isArchivedList ? "Access Primary Notes" : "Access Archived Notes"}
+            </Link>
           </div>
         </div>
+
+        {/* Search */}
+        <form
+          method="GET"
+          className="w-full max-w-md"
+        >
+          <input
+            type="search"
+            name="q"
+            defaultValue={query}
+            placeholder="Search notes by title, content, or owner..."
+            className="w-full h-10 rounded-xl border border-white/40 bg-white/60 px-3 text-sm font-medium text-[#0c1421] placeholder:text-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+          />
+          {isArchivedList && (
+            <input type="hidden" name="status" value={VAULT_ENTITY_STATUS.ARCHIVED} />
+          )}
+        </form>
       </div>
 
       {notes.length === 0 ? (
@@ -161,6 +209,7 @@ export default async function NotesPage({
         <div className="grid gap-6">
           {notes.map((note) => {
             const preview = getNotePreview(note.content);
+            const imageSrc = getFirstImageSrc(note.content);
             return (
               <div
                 key={note.id}
@@ -189,9 +238,18 @@ export default async function NotesPage({
                           </div>
                         </div>
                       </div>
-                      {preview && (
+                      {preview && !imageSrc && (
                         <div className="relative pl-4 border-l-2 border-blue-500/20 py-1 text-sm text-slate-600 truncate">
                           {preview}
+                        </div>
+                      )}
+                      {imageSrc && (
+                        <div className="mt-2 pl-4">
+                          <img
+                            src={imageSrc}
+                            alt="Note image"
+                            className="max-h-20 w-auto rounded-md border border-slate-200 object-cover shadow-sm"
+                          />
                         </div>
                       )}
                     </div>
@@ -260,17 +318,9 @@ export default async function NotesPage({
       )}
       
       <footer className="pt-24 border-t border-white/20">
-        <div className="flex flex-col md:flex-row items-center justify-between gap-8 text-center md:text-left">
-          <div className="space-y-1">
-            <p className="text-xs font-black text-[#0c1421] uppercase tracking-[0.2em]">Notes Vault</p>
-            <p className="text-[10px] text-slate-400">All data points are synchronized across the vault infrastructure.</p>
-          </div>
-          <div className="flex items-center gap-4">
-             <Link href={isArchivedList ? "/dashboard/notes" : `/dashboard/notes?status=${VAULT_ENTITY_STATUS.ARCHIVED}`} className="text-[10px] font-black text-blue-500 hover:text-blue-600 uppercase tracking-widest transition-colors underline-offset-4 hover:underline">
-               {isArchivedList ? "Access Primary Terminal" : "Archived Notes"}
-             </Link>
-          </div>
-        </div>
+        <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-center">
+          Credential Vault
+        </p>
       </footer>
     </div>
   );

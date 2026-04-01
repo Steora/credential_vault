@@ -60,6 +60,10 @@ export default async function ProjectDetailPage({
       description: true,
       status:      true,
       createdAt:   true,
+      updatedAt:   true,
+      owner:      { select: { id: true, name: true, email: true } },
+      createdBy:   { select: { id: true, name: true, email: true } },
+      updatedBy:   { select: { id: true, name: true, email: true } },
       parentId:    true,
       parent:      { select: { id: true, name: true } },
       children:    {
@@ -136,6 +140,18 @@ export default async function ProjectDetailPage({
     }),
   ]);
 
+  const createdByLabel =
+    project.createdBy?.name ??
+    project.createdBy?.email ??
+    project.owner?.name ??
+    project.owner?.email ??
+    null;
+
+  const updatedByLabel =
+    project.updatedBy?.name ??
+    project.updatedBy?.email ??
+    createdByLabel;
+
   return (
     <div className="space-y-8">
 
@@ -161,9 +177,17 @@ export default async function ProjectDetailPage({
                 </span>
               )}
             </div>
-            <p className="text-xs text-muted-foreground">
-              Created on {formatDate(project.createdAt)}
-            </p>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <span>
+                Created on {formatDate(project.createdAt)}
+                {createdByLabel && <> by {createdByLabel}</>}
+              </span>
+              <span>·</span>
+              <span>
+                Last modified on {formatDate(project.updatedAt)}
+                {updatedByLabel && <> by {updatedByLabel}</>}
+              </span>
+            </div>
           </div>
           {canLeaveProject && (
             <LeaveProjectButton projectId={id} projectName={project.name} />

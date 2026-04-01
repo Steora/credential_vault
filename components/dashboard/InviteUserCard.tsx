@@ -48,7 +48,7 @@ export default function InviteUserCard({ currentUserRole }: { currentUserRole: R
           <div>
             <CardTitle className="text-xl font-black text-[#0c1421] uppercase tracking-tight">Invite User</CardTitle>
             <CardDescription className="text-slate-500 font-medium tracking-tight">
-              Initialize a new User profile. Invitations expire after 168h.
+              Initialize a new User profile. Invitations expire after 7 days.
             </CardDescription>
           </div>
         </div>
@@ -56,7 +56,7 @@ export default function InviteUserCard({ currentUserRole }: { currentUserRole: R
       <CardContent className="pt-8">
         <form ref={formRef} action={formAction} className="flex flex-col gap-6 lg:flex-row lg:items-end">
           <div className="space-y-2 flex-grow">
-            <Label htmlFor="invite-email" className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Secure Email Endpoint</Label>
+            <Label htmlFor="invite-email" className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">enter email</Label>
             <Input
               id="invite-email"
               name="email"

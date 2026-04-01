@@ -49,11 +49,11 @@ export default function AppSidebar({ user }: { user: SidebarUser }) {
 
   const fullNav: NavItem[] = [
     { label: "Dashboard",       href: "/dashboard",           icon: LayoutDashboard },
-    { label: "Activity",        href: "/dashboard/activity", icon: Clock },
     { label: "Projects",        href: "/dashboard/projects", icon: FolderOpen },
     { label: "General Notes",   href: "/dashboard/notes",    icon: FileText },
     { label: "User Management", href: "/dashboard/users",    icon: Users },
     { label: "Approvals",       href: "/dashboard/approvals", icon: ShieldCheck },
+    { label: "Activity",        href: "/dashboard/activity", icon: Clock },
   ];
 
   const mainNav: NavItem[] = memberOnly

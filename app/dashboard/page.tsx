@@ -44,7 +44,7 @@ export default async function DashboardPage() {
               Projects
             </Link>
             <Link href="/dashboard/projects" className="group flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-blue-600 hover:text-blue-700 transition-colors">
-              Access Portal <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-1" />
+              access projects <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-1" />
             </Link>
           </div>
 
@@ -78,7 +78,7 @@ export default async function DashboardPage() {
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
                   <h4 className="text-sm font-black text-slate-700 uppercase tracking-tight">Archived Projects</h4>
-                  <p className="text-[11px] text-slate-400 font-medium">Historical data entries</p>
+                  <p className="text-[11px] text-slate-400 font-medium">Archived projects</p>
                 </div>
                 <span className="text-4xl font-black tabular-nums text-[#0c1421]">{pArchived}</span>
               </div>
@@ -99,7 +99,7 @@ export default async function DashboardPage() {
               General Notes
             </Link>
             <Link href="/dashboard/notes" className="group flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-blue-600 hover:text-blue-700 transition-colors">
-              Access Base <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-1" />
+              access notes <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-1" />
             </Link>
           </div>
 
@@ -119,7 +119,7 @@ export default async function DashboardPage() {
                   <span className="text-6xl font-black tracking-tighter text-[#0c1421]">{nActive}</span>
                   <div className="flex flex-col">
                     <span className="text-base font-bold text-[#0c1421] uppercase tracking-tight">Stored Notes</span>
-                    <span className="text-[11px] text-slate-400 font-medium">Encrypted records</span>
+                    <span className="text-[11px] text-slate-400 font-medium">General notes</span>
                   </div>
                 </div>
               </div>
@@ -133,7 +133,7 @@ export default async function DashboardPage() {
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
                   <h4 className="text-sm font-black text-slate-700 uppercase tracking-tight">Archived Notes</h4>
-                  <p className="text-[11px] text-slate-400 font-medium">Secured offline archives</p>
+                  <p className="text-[11px] text-slate-400 font-medium">Archived notes</p>
                 </div>
                 <span className="text-4xl font-black tabular-nums text-[#0c1421]">{nArchived}</span>
               </div>
@@ -142,7 +142,7 @@ export default async function DashboardPage() {
         </section>
       </div>
 
-      {/* Modern Status Footer */}
+      {/* Modern Status Footer
       <footer className="pt-24 border-t border-white/20">
         <div className="flex flex-col md:flex-row items-center justify-between gap-8 text-center md:text-left">
           <div className="space-y-1">
@@ -160,7 +160,7 @@ export default async function DashboardPage() {
             </div>
           </div>
         </div>
-      </footer>
+      </footer> */}
     </div>
   );
 }

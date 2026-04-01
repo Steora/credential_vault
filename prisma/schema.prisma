@@ -37,6 +37,11 @@ model User {
   sharedSecrets  Secret[] @relation("SecretAccess")
   sharedNotes    Note[]   @relation("NoteAccess")
 
+  createdProjects Project[] @relation("ProjectCreator")
+  updatedProjects Project[] @relation("ProjectUpdater")
+  ownedProjects   Project[] @relation("ProjectOwner")
+  updatedNotes    Note[]    @relation("NoteUpdater")
+
   /** Explicit project membership (ADMIN/SUPERADMIN assignments on User Management). */
   projectMembers ProjectMember[]
 
@@ -149,12 +154,24 @@ model Project {
   members     ProjectMember[]
   status      VaultEntityStatus @default(ACTIVE)
   createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+
+  createdById String?
+  createdBy   User?    @relation("ProjectCreator", fields: [createdById], references: [id])
+  updatedById String?
+  updatedBy   User?    @relation("ProjectUpdater", fields: [updatedById], references: [id])
+
+  ownerId     String?
+  owner       User?    @relation("ProjectOwner", fields: [ownerId], references: [id])
 
   pendingSecretSubmissions PendingSecretSubmission[]
   pendingNoteSubmissions   PendingNoteSubmission[]
 
   @@index([parentId])
   @@index([status])
+  @@index([createdById])
+  @@index([updatedById])
+  @@index([ownerId])
 }
 
 model ProjectMember {
@@ -219,6 +236,9 @@ model Note {
   ownerId     String
   owner       User     @relation("NoteOwner", fields: [ownerId], references: [id])
 
+  updatedById String?
+  updatedBy   User?    @relation("NoteUpdater", fields: [updatedById], references: [id])
+
   // allowedUserIds — the explicit per-user access list.
   // A record is visible to a USER/INTERN ONLY if their id appears here.
   // MODERATOR and above bypass this list via role-based access.
@@ -228,6 +248,9 @@ model Note {
   status      VaultEntityStatus @default(ACTIVE)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  /** Optional back-reference for USER edits that await admin approval. */
+  pendingEditSubmissions PendingNoteSubmission[] @relation("PendingNoteOriginal")
 
   @@index([status])
 }
@@ -275,6 +298,10 @@ model PendingNoteSubmission {
   reviewer       User?                   @relation("PendingNoteReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
   reviewedAt     DateTime?
   rejectionNote  String?                 @db.Text
+
+  /// When set, this represents an edit to an existing note rather than a brand new note.
+  originalNoteId String?
+  originalNote   Note?                   @relation("PendingNoteOriginal", fields: [originalNoteId], references: [id], onDelete: Cascade)
 
   @@index([status])
   @@index([submitterId])
