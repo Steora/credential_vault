@@ -1,3 +1,4 @@
+import ProjectSecretsWidget from "@/components/dashboard/ProjectSecretsWidget";
 import Link       from "next/link";
 import { notFound } from "next/navigation";
 import { Role }   from "@prisma/client";
@@ -23,10 +24,10 @@ import CopyNoteButton        from "@/components/CopyNoteButton";
 import ReactMarkdown         from "react-markdown";
 import AddNoteDialog         from "@/components/dashboard/AddNoteDialog";
 import EditNoteDialog        from "@/components/dashboard/EditNoteDialog";
-import ArchiveNoteButton      from "@/components/dashboard/ArchiveNoteButton";
+import ArchiveNoteButton     from "@/components/dashboard/ArchiveNoteButton";
 import CreateSubprojectDialog from "@/components/dashboard/CreateSubprojectDialog";
-import LeaveProjectButton   from "@/components/dashboard/LeaveProjectButton";
-import EditProjectDialog    from "@/components/dashboard/EditProjectDialog"; // <-- ADDED IMPORT
+import LeaveProjectButton    from "@/components/dashboard/LeaveProjectButton";
+import EditProjectDialog     from "@/components/dashboard/EditProjectDialog";
 
 function formatDate(d: Date) {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -52,7 +53,7 @@ export default async function ProjectDetailPage({
     isActive: session.user.isActive,
   };
   const canCreateProject = canUserPerformAction(actor, null, "project", "create");
-  const canUpdateProject = canUserPerformAction(actor, null, "project", "update"); // <-- ADDED PERMISSION CHECK
+  const canUpdateProject = canUserPerformAction(actor, null, "project", "update");
 
   const project = await prisma.project.findFirst({
     where: { id, ...projectWhereForVaultRead(actor) },
@@ -180,6 +181,15 @@ export default async function ProjectDetailPage({
     project.updatedBy?.email ??
     createdByLabel;
 
+  // Group secrets by environment
+  const groupedSecrets = secrets.reduce((acc, secret) => {
+    // If a secret somehow doesn't have an environment, fall back to "Default"
+    const env = secret.environment || "Default";
+    if (!acc[env]) acc[env] = [];
+    acc[env].push(secret);
+    return acc;
+  }, {} as Record<string, typeof secrets>);
+
   return (
     <div className="min-w-0 space-y-8">
 
@@ -199,7 +209,6 @@ export default async function ProjectDetailPage({
           <div className="flex min-w-0 flex-col gap-1">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-bold tracking-tight">{project.name}</h1>
-              {/* <-- ADDED EDIT BUTTON HERE --> */}
               {canEditProject && (
                 <EditProjectDialog
                   project={{
@@ -303,79 +312,19 @@ export default async function ProjectDetailPage({
       )}
 
       {/* ── Secrets section ─────────────────────────────────────────────── */}
-      <section className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-semibold">Secrets</h2>
-            <p className="text-xs text-muted-foreground">
-              {secrets.length} encrypted secret{secrets.length !== 1 ? "s" : ""}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <CopyAllSecretsButton projectId={project.id} secretCount={secrets.length} />
-            {showAddSecret && (
-              <AddSecretDialog
-                projectId={project.id}
-                projectName={project.name}
-                allowBulkImport={canMutateVault || canUserRequestPendingSubmission}
-              />
-            )}
-          </div>
-        </div>
-
-        {secrets.length === 0 ? (
-          <div className="rounded-xl border border-dashed bg-muted/20 p-10 text-center">
-            <p className="text-sm text-muted-foreground">
-              No secrets yet.{showAddSecret ? " Add one above." : ""}
-            </p>
-          </div>
-        ) : (
-          <div className="max-h-[min(70vh,40rem)] min-w-0 overflow-auto rounded-xl border border-border">
-            <table className="w-max min-w-full text-sm">
-              <thead className="sticky top-0 z-[1] bg-muted/95 backdrop-blur-sm">
-                <tr className="text-xs text-muted-foreground">
-                  <th className="whitespace-nowrap py-2.5 pl-4 pr-3 text-left font-medium">Key</th>
-                  <th className="whitespace-nowrap py-2.5 px-3 text-left font-medium">Owner</th>
-                  <th className="whitespace-nowrap py-2.5 px-3 text-left font-medium">Created</th>
-                  <th className="whitespace-nowrap py-2.5 pl-3 pr-4 text-right font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {secrets.map((s) => (
-                  <tr key={s.id} className="bg-card hover:bg-muted/20 transition-colors">
-                    <td className="py-3 pl-4 pr-3">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <span className="font-mono font-medium whitespace-nowrap">{s.key}</span>
-                        <span className="font-mono text-xs text-muted-foreground tracking-widest select-none">
-                          ••••••••
-                        </span>
-                      </div>
-                    </td>
-                    <td className="whitespace-nowrap py-3 px-3 text-muted-foreground">
-                      {s.owner.name ?? s.owner.email}
-                    </td>
-                    <td className="py-3 px-3 text-muted-foreground">
-                      {formatDate(s.createdAt)}
-                    </td>
-                    <td className="py-3 pl-3 pr-4">
-                      <div className="flex items-center justify-end gap-1">
-                        <RevealButton secretId={s.id} secretKey={s.key} />
-                        <CopyButton secretId={s.id} />
-                        {canMutateVault && (
-                          <EditSecretDialog secretId={s.id} secretKey={s.key} />
-                        )}
-                        {canMutateVault && (
-                          <DeleteSecretButton secretId={s.id} secretKey={s.key} />
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+      <ProjectSecretsWidget
+        project={{ id: project.id, name: project.name }}
+        secrets={secrets.map((s) => ({
+          id: s.id,
+          key: s.key,
+          environment: s.environment || "Default",
+          ownerName: s.owner.name ?? s.owner.email ?? "Unknown",
+          createdAtStr: formatDate(s.createdAt),
+        }))}
+        showAddSecret={showAddSecret}
+        canMutateVault={canMutateVault}
+        canUserRequestPendingSubmission={canUserRequestPendingSubmission}
+      />
 
       <Separator />
 

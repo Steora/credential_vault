@@ -9,7 +9,7 @@ if (!process.env.DATABASE_URL) {
  * Bump this when you add/change Prisma models so `next dev` does not keep an
  * old PrismaClient instance missing new delegates (e.g. `projectMember`).
  */
-const PRISMA_SCHEMA_REVISION = 17;
+const PRISMA_SCHEMA_REVISION = 18;
 
 const globalForPrisma = globalThis as unknown as {
   prisma: ReturnType<typeof buildPrismaClient> | undefined;

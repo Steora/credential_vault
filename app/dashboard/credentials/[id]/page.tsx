@@ -151,19 +151,23 @@ export default async function CredentialSectionDetailPage({
             <table className="w-max min-w-full text-sm">
               <thead className="sticky top-0 z-[1] bg-white/90 backdrop-blur-sm">
                 <tr className="border-b border-white/30 text-left text-[10px] uppercase tracking-widest text-slate-400">
-                  <th className="whitespace-nowrap px-4 py-2 font-medium">Key</th>
-                  <th className="whitespace-nowrap px-4 py-2 font-medium">Owner</th>
-                  <th className="whitespace-nowrap px-4 py-2 font-medium">Value</th>
+                  <th className="whitespace-nowrap px-4 py-2 font-medium">Name</th>
+                  <th className="whitespace-nowrap px-4 py-2 font-medium">Username</th>
+                  <th className="whitespace-nowrap px-4 py-2 font-medium">Password</th>
                 </tr>
               </thead>
               <tbody>
                 {section.keys.map((k) => (
                   <tr key={k.id} className="border-t border-white/20">
-                    <td className="whitespace-nowrap px-4 py-2 align-top font-semibold text-[#0c1421]">{k.label}</td>
                     <td className="whitespace-nowrap px-4 py-2 align-top text-slate-600">
                       {k.owner.name ?? k.owner.email ?? "—"}
                     </td>
-                    <td className="max-w-none px-4 py-2 align-top whitespace-pre-wrap break-all text-slate-700">{k.value}</td>
+                    <td className="whitespace-nowrap px-4 py-2 align-top font-semibold text-[#0c1421]">
+                      {k.label}
+                    </td>
+                    <td className="max-w-none px-4 py-2 align-top whitespace-pre-wrap break-all text-slate-700">
+                      {k.value}
+                    </td>
                   </tr>
                 ))}
               </tbody>

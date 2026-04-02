@@ -61,7 +61,12 @@ export type DecryptAllResult =
  *
  * Same scope as list queries — secrets outside the actor’s access are excluded.
  */
-export async function decryptAllProjectSecrets(projectId: string): Promise<DecryptAllResult> {
+// Replace the existing decryptAllProjectSecrets function with this:
+
+export async function decryptAllProjectSecrets(
+  projectId: string, 
+  environment?: string // <-- ADDED PARAMETER
+): Promise<DecryptAllResult> {
   const session = await auth();
   const vault = assertActiveVaultSession(session);
   if (!vault.ok) {
@@ -78,7 +83,8 @@ export async function decryptAllProjectSecrets(projectId: string): Promise<Decry
     isActive: vault.user.isActive,
   };
 
-  const entries = await getDecryptedSecretsByProject(projectId.trim(), actor);
+  // Pass environment down to the query
+  const entries = await getDecryptedSecretsByProject(projectId.trim(), actor, environment);
 
   if (entries.length === 0) {
     return { success: false, error: "No accessible secrets found in this project." };

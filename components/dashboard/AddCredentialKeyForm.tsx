@@ -27,7 +27,7 @@ export default function AddCredentialKeyForm({ sectionId, userRole }: Props) {
     const l = label.trim();
     const v = value.trim();
     if (!l || !v) {
-      setError("Key and value are required.");
+      setError("Username and password are required.");
       return;
     }
 
@@ -38,9 +38,9 @@ export default function AddCredentialKeyForm({ sectionId, userRole }: Props) {
         return;
       }
       if (result.pendingApproval) {
-        toast.success("Submitted for admin approval. The key will appear after it is authorized.");
+        toast.success("Submitted for admin approval. The credential will appear after it is authorized.");
       } else {
-        toast.success("Key added.");
+        toast.success("Credential added.");
       }
       setLabel("");
       setValue("");
@@ -58,14 +58,14 @@ export default function AddCredentialKeyForm({ sectionId, userRole }: Props) {
           htmlFor="credential-key-label"
           className="text-[10px] font-semibold uppercase tracking-widest text-slate-500"
         >
-          Key
+          Username
         </label>
         <Input
           id="credential-key-label"
           value={label}
           onChange={(e) => setLabel(e.target.value)}
-          placeholder="Key"
-          className="h-9 w-full"
+          placeholder="Username"
+          className="h-9 w-full bg-white/50 border-white/30 placeholder:text-slate-500 font-medium text-[#0c1421] focus-visible:bg-white transition-colors"
           disabled={isPending}
           required
         />
@@ -75,25 +75,25 @@ export default function AddCredentialKeyForm({ sectionId, userRole }: Props) {
           htmlFor="credential-key-value"
           className="text-[10px] font-semibold uppercase tracking-widest text-slate-500"
         >
-          Value
+          Password
         </label>
         <Input
           id="credential-key-value"
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          placeholder="Value"
-          className="h-9 w-full"
+          placeholder="Password"
+          className="h-9 w-full bg-white/50 border-white/30 placeholder:text-slate-500 font-medium text-[#0c1421] focus-visible:bg-white transition-colors"
           disabled={isPending}
           required
         />
       </div>
-      <Button type="submit" className="h-9 text-[10px] font-black uppercase tracking-widest" disabled={isPending}>
-        {isPending ? "Saving…" : userRole === Role.USER ? "Submit for approval" : "Add key"}
+      <Button type="submit" className="h-9 text-[10px] font-black uppercase tracking-widest bg-[#0c1421] text-white hover:bg-black shadow-md" disabled={isPending}>
+        {isPending ? "Saving…" : userRole === Role.USER ? "Submit for approval" : "Add credential"}
       </Button>
       {error && <p className="w-full text-sm text-destructive">{error}</p>}
       {userRole === Role.USER && (
         <p className="w-full text-[11px] text-muted-foreground">
-          Your organization requires admin approval before new keys are stored in this section.
+          Your organization requires admin approval before new credentials are stored in this section.
         </p>
       )}
     </form>

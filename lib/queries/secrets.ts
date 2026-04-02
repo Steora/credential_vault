@@ -32,6 +32,7 @@ import {
 const LIST_SELECT = {
   id:        true,
   key:       true,
+  environment: true,
   ownerId:   true,
   projectId: true,
   createdAt: true,
@@ -44,6 +45,7 @@ const LIST_SELECT = {
 /** Full columns — includes ciphertext fields needed for decryption. */
 const FULL_SELECT = {
   ...LIST_SELECT,
+  environment: true,
   encryptedValue: true,
   iv:             true,
 } as const;
@@ -127,16 +129,24 @@ export async function getDecryptedSecretById(
  * Fetches and decrypts all accessible secrets within a project in one call.
  * Returns `{ key, plaintext }` pairs ordered alphabetically by key.
  */
+// Replace the existing getDecryptedSecretsByProject function with this:
+
 export async function getDecryptedSecretsByProject(
   projectId: string,
   actor: QueryActor,
+  environment?: string, // <-- ADDED PARAMETER
 ): Promise<{ key: string; plaintext: string }[]> {
   if (isActorContentBlocked(actor)) return [];
 
-  const baseWhere = {
+  const baseWhere: any = {
     projectId,
     project: { is: projectWhereForVaultRead(actor) },
   };
+  
+  // Filter by environment if provided
+  if (environment) {
+    baseWhere.environment = environment;
+  }
 
   const secrets = await (hasUnrestrictedProjectScope(actor.role)
     ? prisma.secret.findMany({
@@ -160,7 +170,6 @@ export async function getDecryptedSecretsByProject(
     plaintext: decryptValue(s.encryptedValue, s.iv),
   }));
 }
-
 /**
  * Fetches all secrets the actor owns or has been granted access to,
  * across all projects. Ciphertext excluded.

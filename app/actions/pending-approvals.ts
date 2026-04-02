@@ -136,6 +136,7 @@ export async function approvePendingSecret(id: string): Promise<ApprovalActionRe
         key:            pending.key,
         encryptedValue: pending.encryptedValue,
         iv:             pending.iv,
+        environment:    pending.environment,
         projectId:      pending.projectId,
         ownerId:        pending.submitterId,
       },

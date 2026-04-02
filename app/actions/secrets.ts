@@ -29,6 +29,7 @@ const SaveSecretSchema = z.object({
   value: z.string().min(1, "Value must not be empty."),
   /** The ID of the project this secret belongs to. */
   projectId: z.string().min(1, "Project ID must not be empty."),
+  environment: z.string().min(1, "Environment name is required."),
 });
 
 export type SaveSecretInput = z.infer<typeof SaveSecretSchema>;
@@ -200,6 +201,7 @@ export type SaveSecretsFromEnvResult =
 export async function saveSecretsFromEnv(
   pairs: Pick<EnvPair, "key" | "value">[],
   projectId: string,
+  environment: string,
 ): Promise<SaveSecretsFromEnvResult> {
   // ------------------------------------------------------------------
   // 1. Auth
@@ -307,6 +309,7 @@ export async function saveSecretsFromEnv(
             data: {
               submitterId,
               projectId: trimmedProjectId,
+              environment,
               key: row.key,
               encryptedValue: row.encryptedValue,
               iv: row.iv,
@@ -351,6 +354,7 @@ export async function saveSecretsFromEnv(
           prisma.secret.create({
             data: {
               key: row.key,
+              environment,
               encryptedValue: row.encryptedValue,
               iv: row.iv,
               projectId: trimmedProjectId,
@@ -386,6 +390,7 @@ const UpdateSecretSchema = z.object({
   secretId: z.string().min(1, "Secret ID must not be empty."),
   key:      z.string().min(1, "Key must not be empty."),
   value:    z.string().min(1, "Value must not be empty."),
+  environment: z.string().min(1),
 });
 
 export type UpdateSecretInput  = z.infer<typeof UpdateSecretSchema>;
@@ -438,7 +443,7 @@ export async function updateSecret(
 
   await prisma.secret.update({
     where: { id: secretId },
-    data:  { key, encryptedValue, iv },
+    data:  { key, encryptedValue, iv, environment },
   });
 
   await logActivity({
@@ -500,6 +505,50 @@ export async function deleteSecret(secretId: string): Promise<DeleteSecretResult
     type: "SECRET_DELETED",
     projectId: secret.projectId,
   });
+
+  return { success: true };
+}
+
+// Add this to the bottom of app/actions/secrets.ts
+
+/**
+ * Deletes all secrets within a specific environment for a project.
+ * Requires MODERATOR or above.
+ */
+export async function deleteEnvironment(projectId: string, environment: string): Promise<DeleteSecretResult> {
+  const session = await auth();
+  const vault = assertActiveVaultSession(session);
+  if (!vault.ok) return { success: false, error: vault.error };
+
+  const actor = { id: vault.user.id, role: vault.user.role };
+  if (!canUserPerformAction(actor, null, "secret", "delete")) {
+    return {
+      success: false,
+      error: `Role "${vault.user.role}" is not permitted to delete secrets.`,
+    };
+  }
+
+  const scope = await assertModeratorAssignedToProject(actor, projectId);
+  if (!scope.ok) return { success: false, error: scope.error };
+
+  const deleted = await prisma.secret.deleteMany({
+    where: { projectId, environment },
+  });
+
+  if (deleted.count > 0) {
+    await logActivity({
+      actorId:    vault.user.id,
+      action:     ActivityAction.DELETE,
+      entityType: "secret",
+      entityId:   projectId,
+      label:      `Deleted section "${environment}" (${deleted.count} secrets)`,
+    });
+
+    eventBus.emit("vault_event", {
+      type: "SECRET_DELETED",
+      projectId,
+    });
+  }
 
   return { success: true };
 }

@@ -200,6 +200,7 @@ model Secret {
   key            String   // e.g., "DATABASE_URL"
   encryptedValue String   // AES-256-GCM ciphertext + auth tag (hex)
   iv             String   // AES-256-GCM 96-bit initialisation vector (hex)
+  environment    String   @default("Default") // e.g., "local", "development", "production"
 
   // Project relation
   projectId      String
@@ -343,6 +344,7 @@ model PendingSecretSubmission {
   id             String                  @id @default(cuid())
   createdAt      DateTime                @default(now())
   status         PendingSubmissionStatus @default(PENDING)
+  environment    String                  @default("Default")
   submitterId    String
   submitter      User                    @relation("PendingSecretSubmitter", fields: [submitterId], references: [id], onDelete: Cascade)
   projectId      String

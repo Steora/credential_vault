@@ -31,16 +31,17 @@ function CheckIcon({ className }: { className?: string }) {
 interface Props {
   projectId:   string;
   secretCount: number;
+  environment?: string; // <-- ADDED PROP
 }
 
 /**
- * Decrypts all accessible secrets in a project server-side and copies them
+ * Decrypts all accessible secrets in a project (or specific environment) server-side and copies them
  * to the clipboard in .env format (KEY=value, one per line).
  *
  * Only secrets the actor can access are included — same rules as individual
  * copy. The plaintext never lives in the DOM.
  */
-export default function CopyAllSecretsButton({ projectId, secretCount }: Props) {
+export default function CopyAllSecretsButton({ projectId, secretCount, environment }: Props) {
   const [copied, setCopied]              = useState(false);
   const [isPending, startTransition]     = useTransition();
 
@@ -48,7 +49,8 @@ export default function CopyAllSecretsButton({ projectId, secretCount }: Props) 
     if (isPending || copied) return;
 
     startTransition(async () => {
-      const result = await decryptAllProjectSecrets(projectId);
+      // Pass the environment down to the server action
+      const result = await decryptAllProjectSecrets(projectId, environment);
 
       if (!result.success) {
         toast.error("Could not copy secrets", { description: result.error });
@@ -97,7 +99,7 @@ export default function CopyAllSecretsButton({ projectId, secretCount }: Props) 
         }
       />
       <TooltipContent side="top">
-        <p>Copy all {secretCount} secret{secretCount !== 1 ? "s" : ""} as .env</p>
+        <p>Copy {environment ? `all ${environment}` : "all"} {secretCount} secret{secretCount !== 1 ? "s" : ""} as .env</p>
       </TooltipContent>
     </Tooltip>
   );
