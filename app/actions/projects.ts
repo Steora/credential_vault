@@ -154,6 +154,16 @@ export async function updateProject(
   const parsed = UpdateProjectSchema.safeParse(raw);
   if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message ?? "Invalid input." };
 
+  // Check if another project already uses this name
+  const existing = await prisma.project.findUnique({
+    where: { name: parsed.data.name },
+    select: { id: true },
+  });
+  
+  if (existing && existing.id !== parsed.data.projectId) {
+    return { success: false, error: `A project named "${parsed.data.name}" already exists.` };
+  }
+
   try {
     const updated = await prisma.project.update({
       where: { id: parsed.data.projectId },
@@ -174,7 +184,7 @@ export async function updateProject(
 
     return { success: true, id: updated.id };
   } catch (err) {
-    // Usually a P2002 Unique Constraint violation on the name
+    // Usually a P2002 Unique Constraint violation on the name fallback
     return { success: false, error: "Update failed. Project name may already be in use." };
   }
 }
