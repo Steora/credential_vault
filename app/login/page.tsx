@@ -16,15 +16,22 @@ export default async function LoginPage({
   const csrf = await getAuthCsrfToken();
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 dark:bg-zinc-950 px-4">
-      {csrf.ok ? (
-        <LoginForm csrfToken={csrf.token} callbackUrl={callbackUrl} urlError={urlError} />
-      ) : (
-        <div className="w-full max-w-sm rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-sm text-destructive">
-          <p className="font-semibold">Cannot load sign-in</p>
-          <p className="mt-2 text-muted-foreground">{csrf.error}</p>
-        </div>
-      )}
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-slate-50 px-4">
+      {/* Subtle radial glow behind the card */}
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+        <div className="h-[500px] w-[500px] rounded-full bg-blue-100/40 blur-3xl" />
+      </div>
+      {/* Content sits above the glow */}
+      <div className="relative z-10 w-full flex justify-center">
+        {csrf.ok ? (
+          <LoginForm csrfToken={csrf.token} callbackUrl={callbackUrl} urlError={urlError} />
+        ) : (
+          <div className="w-full max-w-sm rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-sm text-destructive">
+            <p className="font-semibold">Cannot load sign-in</p>
+            <p className="mt-2 text-muted-foreground">{csrf.error}</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
