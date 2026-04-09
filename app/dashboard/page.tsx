@@ -4,7 +4,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { isVaultMemberOnlyRole } from "@/lib/role-access";
 import { VAULT_ENTITY_STATUS } from "@/lib/vault-entity-status";
-import { ArrowRight, FileText, LayoutGrid, ClipboardList } from "lucide-react";
+import { FileText, LayoutGrid, ClipboardList } from "lucide-react";
 
 export default async function DashboardPage() {
   const session = await auth();
@@ -32,19 +32,16 @@ export default async function DashboardPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
         {/* Projects Column */}
-        <section className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
-          <div className="flex items-center justify-between px-2">
+        <section className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
+          <div className="flex items-center px-2">
             <Link
               href="/dashboard/projects"
-              className="text-xl font-bold flex items-center gap-3 text-[#0c1421] uppercase tracking-tight hover:opacity-80 transition-opacity"
+              className="inline-flex items-center gap-3 text-xl font-bold leading-none text-[#0c1421] uppercase tracking-tight transition-opacity hover:opacity-80"
             >
-              <div className="p-1.5 bg-[#0c1421] text-white rounded-lg shadow-lg ring-4 ring-[#0c1421]/5">
+              <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-[#0c1421] text-white shadow-lg ring-2 ring-[#0c1421]/5">
                 <LayoutGrid className="size-4" />
               </div>
-              Projects
-            </Link>
-            <Link href="/dashboard/projects" className="group flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-blue-600 hover:text-blue-700 transition-colors">
-              access projects <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-1" />
+              <span>Projects</span>
             </Link>
           </div>
 
@@ -53,19 +50,18 @@ export default async function DashboardPage() {
               href="/dashboard/projects"
               className="group relative block overflow-hidden bg-white/40 backdrop-blur-md border border-white/40 p-6 rounded-2xl shadow-xl transition-all hover:bg-white/60 hover:shadow-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50"
             >
-              <div className="absolute top-0 right-0 p-4">
-                <div className="size-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-600 group-hover:scale-110 transition-transform">
-                  <FileText className="size-5" />
-                </div>
-              </div>
-              <div className="space-y-2.5">
-                <span className="text-[9px] font-black tracking-[0.2em] text-blue-600 bg-blue-100/50 px-3 py-1 rounded-full uppercase">Current Workspace</span>
-                <div className="flex items-baseline gap-3">
-                  <span className="text-6xl font-black tracking-tighter text-[#0c1421]">{pActive}</span>
-                  <div className="flex flex-col">
-                    <span className="text-base font-bold text-[#0c1421] uppercase tracking-tight">Active Projects</span>
-                    <span className="text-[11px] text-slate-400 font-medium">Ongoing development</span>
+              <div className="flex items-center gap-3">
+                <span className="text-6xl font-black leading-none tracking-tighter text-[#0c1421]">{pActive}</span>
+                <div className="flex min-w-0 flex-1 flex-col gap-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-base font-bold uppercase leading-tight tracking-tight text-[#0c1421]">
+                      Active Projects
+                    </span>
+                    <div className="size-10 shrink-0 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-600 transition-transform group-hover:scale-110">
+                      <FileText className="size-5" />
+                    </div>
                   </div>
+                  <span className="text-[11px] font-medium leading-tight text-slate-400">Ongoing development</span>
                 </div>
               </div>
               <div className="absolute -bottom-10 -right-10 size-40 bg-blue-500/5 rounded-full blur-3xl" />
@@ -87,19 +83,16 @@ export default async function DashboardPage() {
         </section>
 
         {/* Notes Column */}
-        <section className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-150">
-          <div className="flex items-center justify-between px-2">
+        <section className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-150">
+          <div className="flex items-center px-2">
             <Link
               href="/dashboard/notes"
-              className="text-xl font-bold flex items-center gap-3 text-[#0c1421] uppercase tracking-tight hover:opacity-80 transition-opacity"
+              className="inline-flex items-center gap-3 text-xl font-bold leading-none text-[#0c1421] uppercase tracking-tight transition-opacity hover:opacity-80"
             >
-              <div className="p-1.5 bg-[#0c1421] text-white rounded-lg shadow-lg ring-4 ring-[#0c1421]/5">
+              <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-[#0c1421] text-white shadow-lg ring-2 ring-[#0c1421]/5">
                 <ClipboardList className="size-4" />
               </div>
-              General Notes
-            </Link>
-            <Link href="/dashboard/notes" className="group flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-blue-600 hover:text-blue-700 transition-colors">
-              access notes <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-1" />
+              <span>General Notes</span>
             </Link>
           </div>
 
@@ -108,19 +101,18 @@ export default async function DashboardPage() {
               href="/dashboard/notes"
               className="group relative block overflow-hidden bg-white/40 backdrop-blur-md border border-white/40 p-6 rounded-2xl shadow-xl transition-all hover:bg-white/60 hover:shadow-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/50"
             >
-              <div className="absolute top-0 right-0 p-4">
-                <div className="size-10 rounded-xl bg-indigo-500/10 flex items-center justify-center text-indigo-600 group-hover:scale-110 transition-transform">
-                  <ClipboardList className="size-5" />
-                </div>
-              </div>
-              <div className="space-y-2.5">
-                <span className="text-[9px] font-black tracking-[0.2em] text-indigo-600 bg-indigo-100/50 px-3 py-1 rounded-full uppercase">Knowledge Base</span>
-                <div className="flex items-baseline gap-3">
-                  <span className="text-6xl font-black tracking-tighter text-[#0c1421]">{nActive}</span>
-                  <div className="flex flex-col">
-                    <span className="text-base font-bold text-[#0c1421] uppercase tracking-tight">Stored Notes</span>
-                    <span className="text-[11px] text-slate-400 font-medium">General notes</span>
+              <div className="flex items-center gap-3">
+                <span className="text-6xl font-black leading-none tracking-tighter text-[#0c1421]">{nActive}</span>
+                <div className="flex min-w-0 flex-1 flex-col gap-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-base font-bold uppercase leading-tight tracking-tight text-[#0c1421]">
+                      Stored Notes
+                    </span>
+                    <div className="size-10 shrink-0 rounded-xl bg-indigo-500/10 flex items-center justify-center text-indigo-600 transition-transform group-hover:scale-110">
+                      <ClipboardList className="size-5" />
+                    </div>
                   </div>
+                  <span className="text-[11px] font-medium leading-tight text-slate-400">General notes</span>
                 </div>
               </div>
               <div className="absolute -bottom-10 -right-10 size-40 bg-indigo-500/5 rounded-full blur-3xl" />

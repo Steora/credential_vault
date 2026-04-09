@@ -44,16 +44,16 @@ export default function ProjectGridWithSearch({
   }, [rows, query]);
 
   return (
-    <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-150">
+    <div className="space-y-10">
       <div className="flex flex-col gap-6 md:flex-row md:items-center justify-between px-2">
         <div className="relative w-full max-w-xl group">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 size-3.5 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 pointer-events-none" style={{ color: '#475569' }} />
           <input
             id="project-search"
-            type="search"
+            type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search project Projects..."
+            placeholder="Search projects..."
             className="w-full h-10 bg-white/40 border border-white/40 backdrop-blur-md rounded-lg pl-10 pr-4 text-[13px] font-medium text-[#0c1421] placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 shadow-sm transition-all"
             autoComplete="off"
           />
@@ -73,7 +73,7 @@ export default function ProjectGridWithSearch({
           </p>
         </div>
       ) : (
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-150">
           {filtered.map((p) => (
             <div
               key={p.id}

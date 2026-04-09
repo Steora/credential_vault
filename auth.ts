@@ -27,17 +27,60 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     // the very next request without requiring a sign-out / sign-in cycle.
     ...authConfig.callbacks,
 
+    /** Backfill Google profile photo when the row has no image (does not overwrite data-URL uploads). */
+    async signIn({ user, account, profile }) {
+      if (
+        account?.provider === "google" &&
+        user?.id &&
+        profile &&
+        typeof profile === "object" &&
+        "picture" in profile
+      ) {
+        const pic = (profile as { picture?: string | null }).picture?.trim();
+        if (!pic) return true;
+
+        const row = await prisma.user.findUnique({
+          where:  { id: user.id },
+          select: { image: true },
+        });
+        const hasStored = !!row?.image?.trim();
+        if (!hasStored) {
+          await prisma.user
+            .update({
+              where: { id: user.id },
+              data: { image: pic },
+            })
+            .catch(() => {
+              /* ignore race with adapter */
+            });
+        }
+      }
+      return true;
+    },
+
     async jwt({ token, user }) {
       if (user) {
-        // Initial sign-in — seed token from the newly created or fetched DB user.
-        // We use fallbacks ("USER" and true) just in case the OAuth payload is 
-        // evaluated before the DB defaults populate.
-        token.id       = user.id;
-        token.role     = (user as { id: string; role?: Role }).role ?? "USER";
-        token.isActive = (user as { id: string; isActive?: boolean }).isActive ?? true;
-        token.picture = pictureForJwt(
-          (user as { image?: string | null }).image ?? undefined,
-        );
+        // Initial sign-in — always read from DB after OAuth so `image` matches
+        // stored row (OAuth `user` from the adapter can omit `image` on this tick).
+        token.id = user.id;
+        const dbUser = await prisma.user.findUnique({
+          where:  { id: user.id },
+          select: { role: true, isActive: true, image: true, name: true },
+        });
+        if (dbUser) {
+          token.role     = dbUser.role;
+          token.isActive = dbUser.isActive;
+          token.picture  = pictureForJwt(dbUser.image);
+          token.name     = dbUser.name ?? undefined;
+        } else {
+          token.role =
+            (user as { id: string; role?: Role }).role ?? "USER";
+          token.isActive =
+            (user as { id: string; isActive?: boolean }).isActive ?? true;
+          token.picture = pictureForJwt(
+            (user as { image?: string | null }).image ?? undefined,
+          );
+        }
       } else if (token.id) {
         // Every subsequent request — re-fetch role and isActive from DB so that
         // deactivation takes effect on the very next request without sign-out.

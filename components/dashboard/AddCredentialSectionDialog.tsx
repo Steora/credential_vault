@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,7 +14,13 @@ import {
 } from "@/components/ui/dialog";
 import { createCredentialSection } from "@/app/actions/credentials";
 
-export default function AddCredentialSectionDialog() {
+interface Props {
+  /** When provided, this dialog creates a subsection of the given parent. */
+  parentId?: string;
+}
+
+export default function AddCredentialSectionDialog({ parentId }: Props) {
+  const isSubsection = Boolean(parentId);
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [desc, setDesc] = useState("");
@@ -23,10 +28,16 @@ export default function AddCredentialSectionDialog() {
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
 
+  const reset = () => {
+    setError(null);
+    setName("");
+    setDesc("");
+  };
+
   const handleCreate = () => {
     setError(null);
     if (!name.trim()) {
-      setError("Section name is required.");
+      setError("Name is required.");
       return;
     }
 
@@ -34,13 +45,18 @@ export default function AddCredentialSectionDialog() {
       const result = await createCredentialSection({
         name:        name.trim(),
         description: desc.trim() || undefined,
+        parentId,
       });
       if (result.success) {
-        toast.success("Section created.");
         setOpen(false);
-        setName("");
-        setDesc("");
-        router.refresh();
+        reset();
+        if (isSubsection) {
+          // Stay on the parent page — just refresh to show the new subsection.
+          router.refresh();
+        } else {
+          // Navigate directly into the new root section.
+          router.push(`/dashboard/credentials/${result.id}`);
+        }
       } else {
         setError(result.error);
       }
@@ -52,32 +68,44 @@ export default function AddCredentialSectionDialog() {
       open={open}
       onOpenChange={(o) => {
         setOpen(o);
-        if (!o) {
-          setError(null);
-          setName("");
-          setDesc("");
-        }
+        if (!o) reset();
       }}
     >
       <DialogTrigger
         render={
-          <Button size="sm">
-            <svg className="mr-1.5 h-4 w-4" viewBox="0 0 16 16" fill="none">
-              <path
-                d="M8 2v12M2 8h12"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-              />
-            </svg>
-            Add Section
-          </Button>
+          isSubsection ? (
+            <Button size="sm" variant="outline">
+              <svg className="mr-1.5 h-4 w-4" viewBox="0 0 16 16" fill="none">
+                <path
+                  d="M8 2v12M2 8h12"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
+              </svg>
+              Add Subsection
+            </Button>
+          ) : (
+            <Button size="sm">
+              <svg className="mr-1.5 h-4 w-4" viewBox="0 0 16 16" fill="none">
+                <path
+                  d="M8 2v12M2 8h12"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
+              </svg>
+              Add Section
+            </Button>
+          )
         }
       />
 
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle>Create credential section</DialogTitle>
+          <DialogTitle>
+            {isSubsection ? "Create subsection" : "Create credential section"}
+          </DialogTitle>
         </DialogHeader>
 
         <div className="mt-2 space-y-4">
@@ -87,8 +115,9 @@ export default function AddCredentialSectionDialog() {
               id="cs-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Production API keys"
+              placeholder={isSubsection ? "e.g. Staging keys" : "e.g. Production API keys"}
               disabled={isPending}
+              autoFocus
             />
           </div>
           <div className="space-y-1.5">
@@ -99,7 +128,7 @@ export default function AddCredentialSectionDialog() {
               id="cs-desc"
               value={desc}
               onChange={(e) => setDesc(e.target.value)}
-              placeholder="Shared credentials for the billing service"
+              placeholder="Short description…"
               disabled={isPending}
             />
           </div>

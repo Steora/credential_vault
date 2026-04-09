@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import EnvFileImporter from "@/components/EnvFileImporter";
 import { saveSecretsFromEnv } from "@/app/actions/secrets";
+import { resolveCanonicalEnvironmentName } from "@/lib/environment-name";
 
 // ---------------------------------------------------------------------------
 // Manual multi-secret form
@@ -21,10 +22,12 @@ import { saveSecretsFromEnv } from "@/app/actions/secrets";
 function ManualSecretForm({
   projectId,
   environment,
+  existingEnvironmentNames,
   onSuccess,
 }: {
   projectId: string;
   environment: string;
+  existingEnvironmentNames: readonly string[];
   onSuccess: () => void;
 }) {
   const [pairs, setPairs] = useState([{ id: Date.now(), key: "", value: "" }]);
@@ -43,8 +46,7 @@ function ManualSecretForm({
   };
 
   const handleSubmit = () => {
-    // Fallback to "Default" if left empty
-    const finalEnv = environment.trim() || "Default";
+    const finalEnv = resolveCanonicalEnvironmentName(environment, existingEnvironmentNames);
 
     const validPairs = pairs.filter(p => p.key.trim() && p.value.trim());
     if (validPairs.length === 0) {
@@ -120,12 +122,25 @@ function ManualSecretForm({
 // Dialog
 // ---------------------------------------------------------------------------
 
+export type AddSecretDialogHeading = "addSecrets" | "newEnvironment" | "addKeys";
+
 interface Props {
   projectId:   string;
   projectName: string;
   allowBulkImport?: boolean;
-  defaultEnvironment?: string; 
+  defaultEnvironment?: string;
+  /** Section names already used in this project (for case-insensitive matching). */
+  existingEnvironmentNames?: readonly string[];
+  /** Title and primary action copy. */
+  heading?: AddSecretDialogHeading;
+  /**
+   * When true, the environment is fixed to `defaultEnvironment` (add keys to an existing section).
+   * The section name field is hidden — Create (keys) runs against that environment only.
+   */
+  lockEnvironment?: boolean;
   triggerIconOnly?: boolean;
+  /** Overrides the default trigger button label. */
+  triggerLabel?: string;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   hideTrigger?: boolean;
@@ -136,7 +151,11 @@ export default function AddSecretDialog({
   projectName,
   allowBulkImport = true,
   defaultEnvironment = "",
+  existingEnvironmentNames = [],
+  heading = "addSecrets",
+  lockEnvironment = false,
   triggerIconOnly = false,
+  triggerLabel,
   open: controlledOpen,
   onOpenChange: setControlledOpen,
   hideTrigger = false,
@@ -147,6 +166,25 @@ export default function AddSecretDialog({
 
   const isOpen = controlledOpen !== undefined ? controlledOpen : internalOpen;
 
+  const effectiveEnvironment = lockEnvironment
+    ? (defaultEnvironment ?? "")
+    : environment;
+
+  const dialogTitle =
+    heading === "newEnvironment"
+      ? `New environment — ${projectName}`
+      : heading === "addKeys"
+        ? `Add keys — ${(defaultEnvironment || "Default").trim() || "Default"} — ${projectName}`
+        : `Add secrets — ${projectName}`;
+
+  const defaultTriggerLabel =
+    triggerLabel ??
+    (triggerIconOnly
+      ? "Add keys"
+      : heading === "newEnvironment"
+        ? "New environment"
+        : "Add secrets");
+
   const handleOpenChange = (newOpen: boolean) => {
     if (setControlledOpen) setControlledOpen(newOpen);
     else setInternalOpen(newOpen);
@@ -154,7 +192,7 @@ export default function AddSecretDialog({
 
   useEffect(() => {
     if (isOpen) {
-      setEnvironment(defaultEnvironment);
+      setEnvironment(defaultEnvironment ?? "");
     }
   }, [isOpen, defaultEnvironment]);
 
@@ -171,12 +209,12 @@ export default function AddSecretDialog({
           {triggerIconOnly ? (
             <Button variant="outline" size="sm" className="h-7 px-2 text-xs font-medium text-muted-foreground hover:text-foreground gap-1.5">
               <Plus className="size-3.5" />
-              Add Secret
+              {defaultTriggerLabel}
             </Button>
           ) : (
             <Button size="sm">
               <Plus className="mr-1.5 size-4" />
-              Add Secret
+              {defaultTriggerLabel}
             </Button>
           )}
         </DialogTrigger>
@@ -184,22 +222,31 @@ export default function AddSecretDialog({
 
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Add Secret — {projectName}</DialogTitle>
+          <DialogTitle>{dialogTitle}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-6 pt-2">
-          {/* Section Input applies to both manual and bulk uploads */}
-          <div className="space-y-1.5">
-            <Label htmlFor="env-section">
-              Section / Environment Name <span className="text-muted-foreground font-normal">(optional)</span>
-            </Label>
-            <Input
-              id="env-section"
-              value={environment}
-              onChange={(e) => setEnvironment(e.target.value)}
-              placeholder="e.g., local, development, production"
-            />
-          </div>
+          {lockEnvironment ? (
+            <div className="space-y-1.5 rounded-lg border bg-muted/30 px-3 py-2.5">
+              <p className="text-xs font-medium text-muted-foreground">Environment</p>
+              <p className="font-mono text-sm font-semibold tracking-wide">
+                {(defaultEnvironment || "Default").trim() || "Default"}
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              <Label htmlFor="env-section">Section / environment name</Label>
+              <Input
+                id="env-section"
+                value={environment}
+                onChange={(e) => setEnvironment(e.target.value.toUpperCase())}
+                placeholder="E.G. PRODUCTION, STAGING"
+                className="font-mono"
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </div>
+          )}
 
           {allowBulkImport ? (
             <Tabs defaultValue="manual" className="mt-1">
@@ -211,7 +258,8 @@ export default function AddSecretDialog({
               <TabsContent value="manual" className="mt-4">
                 <ManualSecretForm 
                   projectId={projectId} 
-                  environment={environment} 
+                  environment={effectiveEnvironment} 
+                  existingEnvironmentNames={existingEnvironmentNames}
                   onSuccess={handleSuccess} 
                 />
               </TabsContent>
@@ -220,7 +268,8 @@ export default function AddSecretDialog({
                 <EnvFileImporter
                   projectId={projectId}
                   projectName={projectName}
-                  environment={environment}
+                  environment={effectiveEnvironment}
+                  existingEnvironmentNames={existingEnvironmentNames}
                   onImportSuccess={handleSuccess}
                 />
               </TabsContent>
@@ -232,7 +281,8 @@ export default function AddSecretDialog({
               </p>
               <ManualSecretForm 
                 projectId={projectId} 
-                environment={environment} 
+                environment={effectiveEnvironment} 
+                existingEnvironmentNames={existingEnvironmentNames}
                 onSuccess={handleSuccess} 
               />
             </div>

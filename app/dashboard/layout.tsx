@@ -5,6 +5,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import AppSidebar from "@/components/dashboard/AppSidebar";
+import DashboardHeaderProfile from "@/components/dashboard/DashboardHeaderProfile";
 import InactiveAccountShell from "@/components/dashboard/InactiveAccountShell";
 import LiquidBackground from "@/components/dashboard/LiquidBackground";
 import { Bell } from "lucide-react";
@@ -33,7 +34,7 @@ export default async function DashboardLayout({
     name:  session.user.name,
     email: session.user.email,
     role:  session.user.role,
-    image: dbProfile?.image ?? null,
+    image: dbProfile?.image ?? session.user.image ?? null,
   };
 
   const showActivityBell =
@@ -48,10 +49,13 @@ export default async function DashboardLayout({
         {/* Glassmorphism Overlay */}
         <div className="absolute inset-0 bg-white/20 backdrop-blur-2xl -z-10" />
 
-        <header className="flex h-16 shrink-0 items-center justify-between px-8 border-b border-white/10">
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-black tracking-[0.3em] text-[#0c1421]/40 uppercase">The Credential Vault</span>
+        <header className="flex h-16 shrink-0 items-center justify-between gap-4 px-6 sm:px-8 border-b border-white/10">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="text-[10px] font-black tracking-[0.3em] text-[#0c1421]/40 uppercase">
+              The Credential Vault
+            </span>
           </div>
+          <DashboardHeaderProfile user={user} />
         </header>
 
         <main className="min-w-0 flex-1 overflow-auto p-12 pt-8">

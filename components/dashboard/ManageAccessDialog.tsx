@@ -112,9 +112,10 @@ export default function ManageAccessDialog({
   const canRemoveInternRole = sharedWithRole.some((u) => u.role === Role.INTERN);
   const canRemoveModeratorRole = sharedWithRole.some((u) => u.role === Role.MODERATOR);
   const hasRemovableUsers = sharedWithRole.length > 0;
+  const showModeratorOption = isProject || type === "credential_section";
   const removeByRoleDisabled =
     isPending ||
-    (isProject
+    (showModeratorOption
       ? !canRemoveUserRole && !canRemoveInternRole && !canRemoveModeratorRole
       : !canRemoveUserRole && !canRemoveInternRole);
 
@@ -310,63 +311,68 @@ export default function ManageAccessDialog({
           </div>
 
           {/* Add Permission */}
-          {available.length > 0 && (
-            <div className="space-y-3">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Add permission
-              </p>
-              {/* By role */}
-              <div className="space-y-1.5">
-                <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                  Select by role
-                </span>
-                <Select onValueChange={handleAddByRole} disabled={isPending}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Choose a role…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={Role.INTERN}>Intern</SelectItem>
-                    <SelectItem value={Role.USER}>User</SelectItem>
-                    {isProject && (
-                      <SelectItem value={Role.MODERATOR}>Moderator</SelectItem>
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
+          <div className="space-y-3 border-t border-border/50 pt-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Add permission
+            </p>
 
-              {/* By user */}
-              <div className="space-y-1.5">
-                <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                  Select by user
-                </span>
-                <Select onValueChange={handleAdd} disabled={isPending}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Search or choose a user…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {available.map((u) => (
-                      <SelectItem key={u.id} value={u.id}>
-                        <span className="flex items-center gap-2">
-                          <span className="truncate max-w-[180px]">
-                            {u.name ?? u.email}
-                          </span>
-                          <Badge variant="outline" className="text-[10px] py-0">
-                            {u.role}
-                          </Badge>
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <p className="pt-1 text-[11px] text-muted-foreground">
-                {isProject
-                  ? "Admins and Superadmins have full vault access without project assignment."
-                  : "Moderators and above already have access by role."}
-              </p>
+            {/* By role */}
+            <div className="space-y-1.5">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Add by role
+              </span>
+              <Select
+                onValueChange={handleAddByRole}
+                disabled={isPending || available.length === 0}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder={available.length === 0 ? "No roles to add" : "Choose a role…"} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={Role.INTERN}>Intern</SelectItem>
+                  <SelectItem value={Role.USER}>User</SelectItem>
+                  {showModeratorOption && (
+                    <SelectItem value={Role.MODERATOR}>Moderator</SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
             </div>
-          )}
+
+            {/* By user */}
+            <div className="space-y-1.5">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Add by user
+              </span>
+              <Select
+                onValueChange={handleAdd}
+                disabled={isPending || available.length === 0}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder={available.length === 0 ? "No users to add" : "Search or choose a user…"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {available.map((u) => (
+                    <SelectItem key={u.id} value={u.id}>
+                      <span className="flex items-center gap-2">
+                        <span className="truncate max-w-[180px]">
+                          {u.name ?? u.email}
+                        </span>
+                        <Badge variant="outline" className="text-[10px] py-0">
+                          {u.role}
+                        </Badge>
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <p className="text-[11px] text-muted-foreground">
+              {isProject
+                ? "Admins and Superadmins have full vault access without project assignment."
+                : "Admins and Superadmins already have full vault access, but can still be listed here for tracking."}
+            </p>
+          </div>
 
           {/* Remove Permission */}
           <div className="space-y-3 pt-2 border-t border-border/50">
@@ -393,7 +399,7 @@ export default function ManageAccessDialog({
                   <SelectItem value={Role.USER} disabled={!canRemoveUserRole}>
                     User
                   </SelectItem>
-                  {isProject && (
+                  {showModeratorOption && (
                     <SelectItem value={Role.MODERATOR} disabled={!canRemoveModeratorRole}>
                       Moderator
                     </SelectItem>

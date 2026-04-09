@@ -1,6 +1,7 @@
 /**
- * Only data URLs (saved uploads) and blob: (client preview) render as a photo.
- * OAuth / Gravatar http(s) URLs are ignored so we show initials until the user uploads.
+ * Resolves a stored profile `image` string to a usable `<img src>`.
+ * Supports OAuth provider URLs (e.g. Google `https://lh3.googleusercontent.com/...`),
+ * uploaded data URLs, and client `blob:` previews.
  */
 export function profilePhotoSrc(
   image: string | null | undefined,
@@ -9,5 +10,6 @@ export function profilePhotoSrc(
   if (!s) return undefined;
   if (s.startsWith("data:image/")) return s;
   if (s.startsWith("blob:")) return s;
+  if (s.startsWith("https://") || s.startsWith("http://")) return s;
   return undefined;
 }
