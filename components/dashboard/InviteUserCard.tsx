@@ -16,6 +16,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { UserPlus } from "lucide-react";
 
 export default function InviteUserCard({ currentUserRole }: { currentUserRole: Role }) {
   const assignable = getInviteAssignableRoles(currentUserRole);
@@ -39,8 +40,8 @@ export default function InviteUserCard({ currentUserRole }: { currentUserRole: R
   const defaultRole = assignable.includes(Role.USER) ? Role.USER : assignable[0];
 
   return (
-    <Card className="bg-white/40 backdrop-blur-md border-white/40 shadow-xl rounded-[2rem] overflow-hidden group">
-      <CardHeader className="pb-6 border-b border-white/10">
+    <Card className="gap-0 bg-white/40 backdrop-blur-md border-white/40 py-5 shadow-xl rounded-[2rem] overflow-hidden group">
+      <CardHeader className="border-b border-white/10 pb-3">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-[#0c1421] text-white rounded-xl shadow-lg ring-4 ring-[#0c1421]/5">
             <UserPlus className="size-5" />
@@ -53,8 +54,8 @@ export default function InviteUserCard({ currentUserRole }: { currentUserRole: R
           </div>
         </div>
       </CardHeader>
-      <CardContent className="pt-8">
-        <form ref={formRef} action={formAction} className="flex flex-col gap-6 lg:flex-row lg:items-end">
+      <CardContent className="pt-4">
+        <form ref={formRef} action={formAction} className="flex flex-col gap-4 lg:flex-row lg:items-end">
           <div className="space-y-2 flex-grow">
             <Label htmlFor="invite-email" className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">enter email</Label>
             <Input
@@ -93,14 +94,7 @@ export default function InviteUserCard({ currentUserRole }: { currentUserRole: R
             {isPending ? "Syncing..." : "Invite User"}
           </Button>
         </form>
-        <div className="mt-8 flex items-center gap-2 group-hover:opacity-100 transition-opacity">
-          <div className="size-1.5 bg-blue-500 rounded-full shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">
-            Outbound: <span className="text-[#0c1421] font-black">mitra.b.mukherjee@steorasystems.com</span>
-          </p>
-        </div>
       </CardContent>
     </Card>
   );
 }
-import { UserPlus } from "lucide-react";

@@ -9,19 +9,32 @@ import { prisma } from "@/lib/prisma";
 import { assertActiveVaultSession } from "@/lib/session-guards";
 import { canUserPerformAction } from "@/lib/permissions";
 import { logActivity } from "@/lib/activity-log";
-import { allowedAccessWhere, type QueryActor } from "@/lib/queries/access";
-import { sendPendingApprovalNotificationEmail } from "@/lib/email";
+import { type QueryActor } from "@/lib/queries/access";
 import { VAULT_ENTITY_STATUS } from "@/lib/vault-entity-status";
+
+const ROLE_RANK: Record<Role, number> = {
+  [Role.INTERN]:     0,
+  [Role.USER]:       1,
+  [Role.MODERATOR]:  2,
+  [Role.ADMIN]:      3,
+  [Role.SUPERADMIN]: 4,
+};
 
 const SectionSchema = z.object({
   name:        z.string().min(1, "Section name is required."),
   description: z.string().max(10_000).optional(),
+  parentId:    z.string().optional(),
 });
 
 const KeySchema = z.object({
   sectionId: z.string().min(1, "Section is required."),
   label:     z.string().min(1, "Key name is required."),
   value:     z.string().min(1, "Value is required."),
+});
+
+const KeyUpdateSchema = z.object({
+  label: z.string().min(1, "Username is required."),
+  value: z.string().min(1, "Password is required."),
 });
 
 export type CredentialActionResult =
@@ -37,7 +50,7 @@ function denyIfIntern(role: Role): string | null {
   return null;
 }
 
-// CREATE SECTION (USER/MOD/ADMIN/SUPERADMIN – no interns)
+// CREATE SECTION or SUBSECTION (USER/MOD/ADMIN/SUPERADMIN – no interns)
 
 export async function createCredentialSection(
   raw: z.infer<typeof SectionSchema>,
@@ -53,15 +66,28 @@ export async function createCredentialSection(
   const parsed = SectionSchema.safeParse({
     name:        raw.name?.trim(),
     description: descTrimmed && descTrimmed.length > 0 ? descTrimmed : undefined,
+    parentId:    raw.parentId?.trim() || undefined,
   });
   if (!parsed.success) {
     return { success: false, error: parsed.error.issues[0]?.message ?? "Invalid input." };
+  }
+
+  // If creating a subsection, verify the parent exists and is active.
+  if (parsed.data.parentId) {
+    const parent = await prisma.credentialSection.findFirst({
+      where:  { id: parsed.data.parentId, status: VAULT_ENTITY_STATUS.ACTIVE },
+      select: { id: true },
+    });
+    if (!parent) {
+      return { success: false, error: "Parent section not found or is archived." };
+    }
   }
 
   const section = await prisma.credentialSection.create({
     data: {
       name:        parsed.data.name,
       description: parsed.data.description ?? null,
+      parentId:    parsed.data.parentId ?? null,
       ownerId:     vault.user.id,
       updatedById: vault.user.id,
     },
@@ -71,17 +97,20 @@ export async function createCredentialSection(
   await logActivity({
     actorId:    vault.user.id,
     action:     ActivityAction.CREATE,
-    entityType: "credential_section",
+    entityType: parsed.data.parentId ? "credential_subsection" : "credential_section",
     entityId:   section.id,
     label:      parsed.data.name,
   });
 
   revalidatePath("/dashboard/credentials");
+  if (parsed.data.parentId) {
+    revalidatePath(`/dashboard/credentials/${parsed.data.parentId}`);
+  }
 
   return { success: true, id: section.id };
 }
 
-// ADD KEY — MODERATOR+ direct; USER with section access submits for admin approval.
+// ADD KEY — MODERATOR/ADMIN/SUPERADMIN only.
 
 export async function createCredentialKey(
   raw: z.infer<typeof KeySchema>,
@@ -90,8 +119,13 @@ export async function createCredentialKey(
   const vault = assertActiveVaultSession(session);
   if (!vault.ok) return { success: false, error: vault.error };
 
-  const deny = denyIfIntern(vault.user.role);
-  if (deny) return { success: false, error: deny };
+  // Only MODERATOR and above may create credential keys directly.
+  if (ROLE_RANK[vault.user.role] < ROLE_RANK[Role.MODERATOR]) {
+    return {
+      success: false,
+      error:   "Only Moderators and above can add credentials.",
+    };
+  }
 
   const actor: QueryActor = {
     id:       vault.user.id,
@@ -108,62 +142,6 @@ export async function createCredentialKey(
     return { success: false, error: parsed.error.issues[0]?.message ?? "Invalid input." };
   }
 
-  const sectionActive = {
-    id:     parsed.data.sectionId,
-    status: VAULT_ENTITY_STATUS.ACTIVE,
-  };
-
-  if (vault.user.role === Role.USER) {
-    const accessible = await prisma.credentialSection.findFirst({
-      where: {
-        AND: [sectionActive, allowedAccessWhere(actor)],
-      },
-      select: { id: true, name: true },
-    });
-    if (!accessible) {
-      return {
-        success: false,
-        error:   "Section not found, archived, or you do not have access.",
-      };
-    }
-
-    const pending = await prisma.pendingCredentialKeySubmission.create({
-      data: {
-        submitterId: vault.user.id,
-        sectionId:   parsed.data.sectionId,
-        label:       parsed.data.label,
-        value:       parsed.data.value,
-      },
-      select: { id: true },
-    });
-
-    await logActivity({
-      actorId:    vault.user.id,
-      action:     ActivityAction.CREATE,
-      entityType: "pending_credential_key",
-      entityId:   pending.id,
-      label:      `${accessible.name} — ${parsed.data.label}`,
-    });
-
-    const admins = await prisma.user.findMany({
-      where: { isActive: true, role: { in: [Role.ADMIN, Role.SUPERADMIN] } },
-      select: { email: true },
-    });
-
-    await sendPendingApprovalNotificationEmail({
-      toAddresses:    admins.map((a) => a.email),
-      kind:             "credential_key",
-      summaryLine:      `Section: ${accessible.name} — key: ${parsed.data.label}`,
-      submitterLabel: vault.user.email ?? vault.user.id,
-    }).catch(() => {});
-
-    revalidatePath("/dashboard/credentials");
-    revalidatePath(`/dashboard/credentials/${parsed.data.sectionId}`);
-    revalidatePath("/dashboard/approvals");
-
-    return { success: true, id: pending.id, pendingApproval: true };
-  }
-
   if (!canUserPerformAction(actor, null, "secret", "create")) {
     return {
       success: false,
@@ -171,6 +149,7 @@ export async function createCredentialKey(
     };
   }
 
+  const sectionActive = { id: parsed.data.sectionId, status: VAULT_ENTITY_STATUS.ACTIVE };
   const section = await prisma.credentialSection.findFirst({
     where:  sectionActive,
     select: { id: true },
@@ -207,6 +186,104 @@ export async function createCredentialKey(
   revalidatePath(`/dashboard/credentials/${parsed.data.sectionId}`);
 
   return { success: true, id: key.id };
+}
+
+// EDIT KEY — USER and above (not INTERN).
+
+export async function updateCredentialKey(
+  id: string,
+  data: z.infer<typeof KeyUpdateSchema>,
+): Promise<CredentialActionResult> {
+  const session = await auth();
+  const vault = assertActiveVaultSession(session);
+  if (!vault.ok) return { success: false, error: vault.error };
+
+  if (vault.user.role === Role.INTERN) {
+    return { success: false, error: "Interns cannot edit credentials." };
+  }
+
+  const parsed = KeyUpdateSchema.safeParse(data);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues[0]?.message ?? "Invalid input." };
+  }
+
+  // Build the section access filter: USER must be in sharedWith; MOD+ unrestricted.
+  const sectionAccessFilter =
+    vault.user.role === Role.USER
+      ? { sharedWith: { some: { id: vault.user.id } } }
+      : {};
+
+  const key = await prisma.credentialKey.findFirst({
+    where: {
+      id,
+      section: { status: VAULT_ENTITY_STATUS.ACTIVE, ...sectionAccessFilter },
+    },
+    select: { id: true, sectionId: true },
+  });
+  if (!key) {
+    return { success: false, error: "Credential not found or access denied." };
+  }
+
+  await prisma.credentialKey.update({
+    where: { id: key.id },
+    data:  { label: parsed.data.label, value: parsed.data.value, updatedById: vault.user.id },
+  });
+
+  await prisma.credentialSection.update({
+    where: { id: key.sectionId },
+    data:  { updatedById: vault.user.id },
+  });
+
+  await logActivity({
+    actorId:    vault.user.id,
+    action:     ActivityAction.UPDATE,
+    entityType: "credential_key",
+    entityId:   key.id,
+    label:      parsed.data.label,
+  });
+
+  revalidatePath("/dashboard/credentials");
+  revalidatePath(`/dashboard/credentials/${key.sectionId}`);
+
+  return { success: true, id: key.id };
+}
+
+// DELETE KEY — ADMIN and SUPERADMIN only.
+
+export async function deleteCredentialKey(id: string): Promise<CredentialActionResult> {
+  const session = await auth();
+  const vault = assertActiveVaultSession(session);
+  if (!vault.ok) return { success: false, error: vault.error };
+
+  if (ROLE_RANK[vault.user.role] < ROLE_RANK[Role.ADMIN]) {
+    return { success: false, error: "Only Admins and above can delete credentials." };
+  }
+
+  const key = await prisma.credentialKey.findUnique({
+    where:  { id },
+    select: { id: true, sectionId: true, label: true },
+  });
+  if (!key) return { success: false, error: "Credential not found." };
+
+  await prisma.credentialKey.delete({ where: { id: key.id } });
+
+  await prisma.credentialSection.update({
+    where: { id: key.sectionId },
+    data:  { updatedById: vault.user.id },
+  });
+
+  await logActivity({
+    actorId:    vault.user.id,
+    action:     ActivityAction.DELETE,
+    entityType: "credential_key",
+    entityId:   key.id,
+    label:      key.label,
+  });
+
+  revalidatePath("/dashboard/credentials");
+  revalidatePath(`/dashboard/credentials/${key.sectionId}`);
+
+  return { success: true };
 }
 
 export async function archiveCredentialSection(

@@ -11,6 +11,17 @@ import ManageAccessDialog from "@/components/dashboard/ManageAccessDialog";
 import CredentialArchiveSectionButton from "@/components/dashboard/CredentialArchiveSectionButton";
 import CredentialUnarchiveSectionButton from "@/components/dashboard/CredentialUnarchiveSectionButton";
 import AddCredentialKeyForm from "@/components/dashboard/AddCredentialKeyForm";
+import AddCredentialSectionDialog from "@/components/dashboard/AddCredentialSectionDialog";
+import CredentialKeyRow from "@/components/dashboard/CredentialKeyRow";
+import CredentialSubsectionCard from "@/components/dashboard/CredentialSubsectionCard";
+
+const ROLE_RANK: Record<Role, number> = {
+  [Role.INTERN]:     0,
+  [Role.USER]:       1,
+  [Role.MODERATOR]:  2,
+  [Role.ADMIN]:      3,
+  [Role.SUPERADMIN]: 4,
+};
 
 function formatDate(d: Date) {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -35,32 +46,35 @@ export default async function CredentialSectionDetailPage({
   const section = await getCredentialSectionById(id, actor);
   if (!section) notFound();
 
-  const isArchived = section.status === VAULT_ENTITY_STATUS.ARCHIVED;
+  const isArchived  = section.status === VAULT_ENTITY_STATUS.ARCHIVED;
+  const isSubsection = section.parent !== null;
 
   const canManageAccess = canUserPerformAction(actor, null, "secret", "update");
-  const canAddKeys =
-    actor.role !== Role.INTERN &&
-    !isArchived &&
-    (actor.role === Role.USER ||
-      canUserPerformAction(actor, null, "secret", "create"));
-  const canArchiveOps = canUserPerformAction(actor, null, "secret", "delete");
+  const canAddKeys      = !isArchived && ROLE_RANK[actor.role] >= ROLE_RANK[Role.MODERATOR];
+  const canEditKeys     = !isArchived && actor.role !== Role.INTERN;
+  const canDeleteKeys   = !isArchived && ROLE_RANK[actor.role] >= ROLE_RANK[Role.ADMIN];
+  const canArchiveOps   = canUserPerformAction(actor, null, "secret", "delete");
+  // Only root sections can have subsections (no nesting beyond one level).
+  const canAddSubsection = !isSubsection && !isArchived && actor.role !== Role.INTERN;
 
   const allUsers =
     canManageAccess && !isArchived
       ? await prisma.user.findMany({
-          where: {
-            isActive: true,
-            role:     { in: [Role.USER, Role.INTERN] },
-          },
+          where:   { isActive: true, id: { not: actor.id } },
           select:  { id: true, name: true, email: true, role: true },
           orderBy: { name: "asc" },
         })
       : [];
 
-  const backHref = isArchived
-    ? "/dashboard/credentials?status=ARCHIVED"
-    : "/dashboard/credentials";
-  const backLabel = isArchived ? "Archived credentials" : "Credentials";
+  // Breadcrumb: subsection links back to its parent, root section links back to the list.
+  const backHref = isSubsection
+    ? `/dashboard/credentials/${section.parent!.id}`
+    : isArchived
+      ? "/dashboard/credentials?status=ARCHIVED"
+      : "/dashboard/credentials";
+  const backLabel = isSubsection
+    ? section.parent!.name
+    : isArchived ? "Archived credentials" : "Credentials";
 
   const createdByLabel = section.owner.name ?? section.owner.email ?? "Unknown";
   const updatedByLabel =
@@ -68,8 +82,13 @@ export default async function CredentialSectionDetailPage({
     section.updatedBy?.email ??
     (section.owner.name ?? section.owner.email ?? "Unknown");
 
+  const activeChildren = section.children.filter(
+    (c) => c.status === VAULT_ENTITY_STATUS.ACTIVE,
+  );
+
   return (
     <div className="mx-auto w-full max-w-3xl space-y-6 pb-20">
+      {/* ── Breadcrumb + header ── */}
       <div>
         <Link
           href={backHref}
@@ -87,7 +106,14 @@ export default async function CredentialSectionDetailPage({
           {backLabel}
         </Link>
 
-        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        {/* Subsection label */}
+        {isSubsection && (
+          <p className="mt-1 text-[10px] font-black uppercase tracking-widest text-indigo-500">
+            Subsection
+          </p>
+        )}
+
+        <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0 space-y-1">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-bold tracking-tight text-[#0c1421]">{section.name}</h1>
@@ -99,15 +125,14 @@ export default async function CredentialSectionDetailPage({
             </div>
             <p className="text-xs text-muted-foreground">
               {section.keys.length} key{section.keys.length !== 1 ? "s" : ""}
+              {!isSubsection && activeChildren.length > 0 && (
+                <> · {activeChildren.length} subsection{activeChildren.length !== 1 ? "s" : ""}</>
+              )}
             </p>
             <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <span>
-                Created by {createdByLabel} on {formatDate(section.createdAt)}
-              </span>
+              <span>Created by {createdByLabel} on {formatDate(section.createdAt)}</span>
               <span>·</span>
-              <span>
-                Last modified by {updatedByLabel} on {formatDate(section.updatedAt)}
-              </span>
+              <span>Last modified by {updatedByLabel} on {formatDate(section.updatedAt)}</span>
             </div>
             {section.description && (
               <p className="mt-2 max-w-2xl text-sm text-slate-600">{section.description}</p>
@@ -142,6 +167,7 @@ export default async function CredentialSectionDetailPage({
         </p>
       )}
 
+      {/* ── Keys ── */}
       <div className="space-y-3">
         <h2 className="text-sm font-semibold text-[#0c1421]">Keys</h2>
         {section.keys.length === 0 ? (
@@ -151,24 +177,23 @@ export default async function CredentialSectionDetailPage({
             <table className="w-max min-w-full text-sm">
               <thead className="sticky top-0 z-[1] bg-white/90 backdrop-blur-sm">
                 <tr className="border-b border-white/30 text-left text-[10px] uppercase tracking-widest text-slate-400">
-                  <th className="whitespace-nowrap px-4 py-2 font-medium">Name</th>
+                  <th className="whitespace-nowrap px-4 py-2 font-medium">Added by</th>
                   <th className="whitespace-nowrap px-4 py-2 font-medium">Username</th>
                   <th className="whitespace-nowrap px-4 py-2 font-medium">Password</th>
+                  <th className="whitespace-nowrap px-4 py-2 font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {section.keys.map((k) => (
-                  <tr key={k.id} className="border-t border-white/20">
-                    <td className="whitespace-nowrap px-4 py-2 align-top text-slate-600">
-                      {k.owner.name ?? k.owner.email ?? "—"}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-2 align-top font-semibold text-[#0c1421]">
-                      {k.label}
-                    </td>
-                    <td className="max-w-none px-4 py-2 align-top whitespace-pre-wrap break-all text-slate-700">
-                      {k.value}
-                    </td>
-                  </tr>
+                  <CredentialKeyRow
+                    key={k.id}
+                    keyId={k.id}
+                    ownerLabel={k.owner.name ?? k.owner.email ?? "—"}
+                    initialLabel={k.label}
+                    initialValue={k.value}
+                    canEdit={canEditKeys}
+                    canDelete={canDeleteKeys}
+                  />
                 ))}
               </tbody>
             </table>
@@ -177,7 +202,61 @@ export default async function CredentialSectionDetailPage({
       </div>
 
       {canAddKeys && (
-        <AddCredentialKeyForm sectionId={section.id} userRole={session.user.role} />
+        <AddCredentialKeyForm sectionId={section.id} />
+      )}
+
+      {/* ── Subsections (root sections only) ── */}
+      {!isSubsection && (
+        <>
+          <Separator />
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-[#0c1421]">
+                Subsections
+                {activeChildren.length > 0 && (
+                  <span className="ml-2 text-xs font-normal text-muted-foreground">
+                    ({activeChildren.length})
+                  </span>
+                )}
+              </h2>
+              {canAddSubsection && (
+                <AddCredentialSectionDialog parentId={section.id} />
+              )}
+            </div>
+
+            {activeChildren.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No subsections yet.</p>
+            ) : (
+              <div className="grid gap-3">
+                {activeChildren.map((child) => {
+                  const childOwnerLabel =
+                    child.owner.name ?? child.owner.email ?? "Unknown";
+                  const childUpdatedLabel =
+                    child.updatedBy?.name ??
+                    child.updatedBy?.email ??
+                    childOwnerLabel;
+                  return (
+                    <CredentialSubsectionCard
+                      key={child.id}
+                      id={child.id}
+                      name={child.name}
+                      description={child.description ?? null}
+                      keyCount={child._count.keys}
+                      sharedWith={child.sharedWith}
+                      ownerLabel={childOwnerLabel}
+                      updatedLabel={childUpdatedLabel}
+                      createdAt={child.createdAt}
+                      updatedAt={child.updatedAt}
+                      allUsers={allUsers}
+                      canManageAccess={canManageAccess && !isArchived}
+                      canArchive={canArchiveOps && !isArchived}
+                    />
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </>
       )}
     </div>
   );

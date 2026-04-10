@@ -12,7 +12,6 @@ import {
   FileText,
   Users,
   ShieldCheck,
-  Settings,
   LogOut,
   Key,
 } from "lucide-react";
@@ -27,7 +26,6 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import UserAvatar from "@/components/dashboard/UserAvatar";
 import { isVaultMemberOnlyRole } from "@/lib/role-access";
 
 export interface SidebarUser {
@@ -60,6 +58,11 @@ export default function AppSidebar({ user }: { user: SidebarUser }) {
 
   const moderatorHidden = new Set<string>(["/dashboard/users", "/dashboard/approvals"]);
 
+  const handleSignOut = async () => {
+    await signOut({ callbackUrl: "/login" });
+    toast.success("Signed out successfully.");
+  };
+
   const mainNav: NavItem[] = memberOnly
     ? fullNav.filter(
         (item) =>
@@ -70,11 +73,6 @@ export default function AppSidebar({ user }: { user: SidebarUser }) {
     : user.role === Role.MODERATOR
       ? fullNav.filter((item) => !moderatorHidden.has(item.href))
       : fullNav;
-
-  const handleSignOut = async () => {
-    await signOut({ callbackUrl: "/login" });
-    toast.success("Signed out successfully.");
-  };
 
   return (
     <Sidebar collapsible="icon" className="border-r border-white/5 bg-[#0c1421] text-sidebar-foreground">
@@ -131,47 +129,15 @@ export default function AppSidebar({ user }: { user: SidebarUser }) {
       </SidebarContent>
 
       <SidebarFooter className="mt-auto px-4 py-8 space-y-8 bg-black/20 backdrop-blur-md">
-        <div className="space-y-5">
-          <div className="flex items-center gap-3.5 px-2 group-data-[collapsible=icon]:hidden">
-            <div className="relative shrink-0">
-              <UserAvatar
-                image={user.image}
-                name={user.name}
-                email={user.email}
-                className="h-10 w-10 ring-2 ring-blue-500/20 shadow-lg text-sm"
-              />
-              <div className="absolute -bottom-0.5 -right-0.5 size-3 bg-green-500 rounded-full border-2 border-[#0c1421] shadow-[0_0_5px_rgba(34,197,94,0.5)]" />
-            </div>
-            <div className="flex flex-col min-w-0">
-              <span className="text-sm font-black text-white tracking-wide uppercase leading-tight">
-                {user.name ?? "User"}
-              </span>
-              <span className="text-[10px] font-medium text-slate-500 truncate tracking-tight">
-                {user.email}
-              </span>
-            </div>
-          </div>
-          
-          <div className="flex items-center justify-between px-2 group-data-[collapsible=icon]:hidden">
-            <div className="px-2 py-0.5 bg-blue-500/10 border border-blue-500/20 rounded-md">
-              <span className="text-[10px] font-black text-blue-500 tracking-widest uppercase">
-                {user.role}
-              </span>
-            </div>
-            <button 
-              onClick={handleSignOut}
-              className="group flex items-center gap-2 text-[10px] font-black text-slate-500 hover:text-white transition-colors uppercase tracking-widest"
-            >
-              Sign out <LogOut className="size-3 transition-transform group-hover:translate-x-1" />
-            </button>
-          </div>
-        </div>
-
         <div className="space-y-1">
-          <Link href="/dashboard/settings" className="flex items-center gap-3.5 px-3 py-2.5 text-[11px] font-bold text-slate-500 hover:text-white transition-all hover:bg-white/5 rounded-lg group-data-[collapsible=icon]:justify-center uppercase tracking-widest leading-none">
-            <Settings className="size-4" />
-            <span className="group-data-[collapsible=icon]:hidden">System Config</span>
-          </Link>
+          <button
+            type="button"
+            onClick={handleSignOut}
+            className="group flex w-full items-center gap-3.5 px-3 py-2.5 text-[11px] font-bold text-slate-500 transition-all hover:bg-white/5 hover:text-white rounded-lg group-data-[collapsible=icon]:justify-center uppercase tracking-widest leading-none"
+          >
+            <LogOut className="size-4 shrink-0 transition-transform group-hover:translate-x-0.5" />
+            <span className="group-data-[collapsible=icon]:hidden">Sign out</span>
+          </button>
         </div>
       </SidebarFooter>
     </Sidebar>

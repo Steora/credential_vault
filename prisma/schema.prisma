@@ -270,6 +270,11 @@ model CredentialSection {
   description String?  @db.Text
   status      VaultEntityStatus @default(ACTIVE)
 
+  /// Subsection support — null means this is a root section.
+  parentId    String?
+  parent      CredentialSection?  @relation("CredentialSectionHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children    CredentialSection[] @relation("CredentialSectionHierarchy")
+
   ownerId     String
   owner       User     @relation("CredentialSectionOwner", fields: [ownerId], references: [id])
 
@@ -288,6 +293,7 @@ model CredentialSection {
   @@index([status])
   @@index([ownerId])
   @@index([updatedById])
+  @@index([parentId])
 }
 
 /** USER-submitted credential key awaiting ADMIN/SUPERADMIN approval. */

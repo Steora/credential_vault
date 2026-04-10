@@ -19,6 +19,7 @@ import CopyNoteButton from "@/components/CopyNoteButton";
 import AddNoteDialog from "@/components/dashboard/AddNoteDialog";
 import EditNoteDialog from "@/components/dashboard/EditNoteDialog";
 import ArchiveNoteButton from "@/components/dashboard/ArchiveNoteButton";
+import DeleteNoteButton from "@/components/dashboard/DeleteNoteButton";
 import UnarchiveNoteButton from "@/components/dashboard/UnarchiveNoteButton";
 import ManageAccessDialog from "@/components/dashboard/ManageAccessDialog";
 
@@ -27,8 +28,15 @@ function formatDate(d: Date) {
 }
 
 function getFirstImageSrc(content: string): string | undefined {
-  const match = content.match(/!\[\]\((data:image[^)]+)\)/);
-  return match?.[1];
+  if (!content) return undefined;
+  // Avoid RegExp on huge data-URL bodies — it can overflow the engine stack.
+  const prefix = "![](data:image";
+  const i = content.indexOf(prefix);
+  if (i === -1) return undefined;
+  const urlStart = i + 4;
+  const close = content.indexOf(")", urlStart);
+  if (close === -1) return undefined;
+  return content.slice(urlStart, close);
 }
 
 function getNotePreview(content: string): string {
@@ -197,8 +205,11 @@ export default async function NotesPage({
                   </div>
                 </Link>
                 {canUnarchive && (
-                  <div className="mt-4 flex justify-end">
+                  <div className="mt-4 flex justify-end gap-2">
                     <UnarchiveNoteButton noteId={note.id} noteTitle={note.title} />
+                    {note.type !== NoteType.NORMAL && (
+                      <DeleteNoteButton noteId={note.id} noteTitle={note.title} />
+                    )}
                   </div>
                 )}
               </div>

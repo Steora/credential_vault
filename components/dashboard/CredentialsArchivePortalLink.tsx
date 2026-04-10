@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { FolderArchive } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { VAULT_ENTITY_STATUS } from "@/lib/vault-entity-status";
 
@@ -14,22 +13,16 @@ export default function CredentialsArchivePortalLink({ isArchivedPortal }: Props
   const href = isArchivedPortal
     ? "/dashboard/credentials"
     : `/dashboard/credentials?status=${VAULT_ENTITY_STATUS.ARCHIVED}`;
-  const title = isArchivedPortal
-    ? "Access active credentials"
-    : "Access archived credentials";
 
   return (
-    /* We cast to 'any' here because your local Button component 
-       definition is missing 'asChild' in its TypeScript interface.
-    */
-    <Button 
-      variant="ghost" 
-      size="icon" 
-      className="h-9 w-9 shrink-0 text-blue-600 hover:text-blue-700" 
-      {...( { asChild: true } as any)}
+    <Button
+      variant="outline"
+      size="sm"
+      className="shrink-0 border-blue-200 bg-blue-600 text-white hover:bg-blue-700 hover:text-white"
+      {...({ asChild: true } as any)}
     >
-      <Link href={href} title={title} aria-label={title}>
-        <FolderArchive className="h-4 w-4" />
+      <Link href={href}>
+        {isArchivedPortal ? "← Active Credentials" : "Archived Credentials"}
       </Link>
     </Button>
   );

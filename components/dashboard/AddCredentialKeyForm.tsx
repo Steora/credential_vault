@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Role } from "@prisma/client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,11 +9,9 @@ import { createCredentialKey } from "@/app/actions/credentials";
 
 interface Props {
   sectionId: string;
-  /** USER submits for approval; elevated roles add immediately. */
-  userRole: Role;
 }
 
-export default function AddCredentialKeyForm({ sectionId, userRole }: Props) {
+export default function AddCredentialKeyForm({ sectionId }: Props) {
   const router = useRouter();
   const [label, setLabel] = useState("");
   const [value, setValue] = useState("");
@@ -37,11 +34,7 @@ export default function AddCredentialKeyForm({ sectionId, userRole }: Props) {
         setError(result.error);
         return;
       }
-      if (result.pendingApproval) {
-        toast.success("Submitted for admin approval. The credential will appear after it is authorized.");
-      } else {
-        toast.success("Credential added.");
-      }
+      toast.success("Credential added.");
       setLabel("");
       setValue("");
       router.refresh();
@@ -87,15 +80,14 @@ export default function AddCredentialKeyForm({ sectionId, userRole }: Props) {
           required
         />
       </div>
-      <Button type="submit" className="h-9 text-[10px] font-black uppercase tracking-widest bg-[#0c1421] text-white hover:bg-black shadow-md" disabled={isPending}>
-        {isPending ? "Saving…" : userRole === Role.USER ? "Submit for approval" : "Add credential"}
+      <Button
+        type="submit"
+        className="h-9 text-[10px] font-black uppercase tracking-widest bg-[#0c1421] text-white hover:bg-black shadow-md"
+        disabled={isPending}
+      >
+        {isPending ? "Saving…" : "Add credential"}
       </Button>
       {error && <p className="w-full text-sm text-destructive">{error}</p>}
-      {userRole === Role.USER && (
-        <p className="w-full text-[11px] text-muted-foreground">
-          Your organization requires admin approval before new credentials are stored in this section.
-        </p>
-      )}
     </form>
   );
 }

@@ -13,6 +13,7 @@ import {
   VAULT_ENTITY_STATUS,
 } from "@/lib/vault-entity-status";
 import { FolderArchive } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import CreateProjectDialog   from "@/components/dashboard/CreateProjectDialog";
 import ProjectGridWithSearch from "@/components/dashboard/ProjectGridWithSearch";
 
@@ -72,7 +73,7 @@ export default async function ProjectsPage({
   const pageTitle = status === VAULT_ENTITY_STATUS.ARCHIVED ? "Archived projects" : "Projects";
   const pageDescription =
     status === VAULT_ENTITY_STATUS.ACTIVE
-      ? "Manage environment secrets and notes per project."
+      ? "Manage environment variables and secure notes for each of your projects."
       : "Projects marked archived. Open the main Projects list for active work.";
 
   const byId = new Map(projects.map((p) => [p.id, p]));
@@ -110,16 +111,17 @@ export default async function ProjectsPage({
         </div>
         <div className="flex items-center gap-4">
           {canCreate && isLiveList && <CreateProjectDialog />}
-          <Link
-            href={
-              isLiveList
-                ? `/dashboard/projects?status=${VAULT_ENTITY_STATUS.ARCHIVED}`
-                : "/dashboard/projects"
-            }
-            className="text-[9px] font-black text-blue-500 hover:text-blue-600 uppercase tracking-widest underline-offset-4 hover:underline"
-          >
-            {isLiveList ? "Access Archived Projects" : "Switch to Active Projects"}
-          </Link>
+          <Button asChild variant="default" size="sm" className="bg-blue-600 hover:bg-blue-700 text-white font-black uppercase tracking-widest text-[9px]">
+            <Link
+              href={
+                isLiveList
+                  ? `/dashboard/projects?status=${VAULT_ENTITY_STATUS.ARCHIVED}`
+                  : "/dashboard/projects"
+              }
+            >
+              {isLiveList ? "Archived Projects" : "Switch to Active Projects"}
+            </Link>
+          </Button>
         </div>
       </div>
 

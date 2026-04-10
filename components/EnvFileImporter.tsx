@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useRef, useState, useTransition } from "react";
 import { parseEnvText, type EnvPair } from "@/lib/env-parser";
+import { resolveCanonicalEnvironmentName } from "@/lib/environment-name";
 import { saveSecretsFromEnv, type SecretImportOutcome } from "@/app/actions/secrets";
 import { toast } from "sonner";
 import { UploadCloud } from "lucide-react";
@@ -54,11 +55,18 @@ function StatusBadge({ outcome }: { outcome: SecretImportOutcome }) {
 interface EnvFileImporterProps {
   projectId: string;
   projectName?: string;
-  environment: string; 
+  environment: string;
+  existingEnvironmentNames?: readonly string[];
   onImportSuccess?: () => void;
 }
 
-export default function EnvFileImporter({ projectId, projectName, environment, onImportSuccess }: EnvFileImporterProps) {
+export default function EnvFileImporter({
+  projectId,
+  projectName,
+  environment,
+  existingEnvironmentNames = [],
+  onImportSuccess,
+}: EnvFileImporterProps) {
   const [rawText,      setRawText]      = useState("");
   const [pairs,        setPairs]        = useState<SelectablePair[]>([]);
   const [outcomes,     setOutcomes]     = useState<SecretImportOutcome[]>([]);
@@ -120,8 +128,7 @@ export default function EnvFileImporter({ projectId, projectName, environment, o
   const outcomeMap = useMemo(() => new Map(outcomes.map((o) => [o.key, o])), [outcomes]);
 
   const handleImport = useCallback(() => {
-    // Fallback to "Default" if left empty
-    const finalEnv = environment.trim() || "Default";
+    const finalEnv = resolveCanonicalEnvironmentName(environment, existingEnvironmentNames);
 
     if (selectedPairs.length === 0) return;
 
@@ -151,7 +158,7 @@ export default function EnvFileImporter({ projectId, projectName, environment, o
       if (pendingCount > 0) toast.success(`Submitted ${pendingCount} secret(s) for approval.`);
       if (savedCount > 0 || pendingCount > 0) onImportSuccess?.();
     });
-  }, [selectedPairs, projectId, environment, onImportSuccess]);
+  }, [selectedPairs, projectId, environment, existingEnvironmentNames, onImportSuccess]);
 
   const handleReset = useCallback(() => {
     setRawText("");

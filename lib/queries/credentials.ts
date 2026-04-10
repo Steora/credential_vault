@@ -20,6 +20,19 @@ import {
 // Select shapes
 // ---------------------------------------------------------------------------
 
+const SUBSECTION_SELECT = {
+  id:          true,
+  name:        true,
+  description: true,
+  status:      true,
+  createdAt:   true,
+  updatedAt:   true,
+  owner:       { select: { id: true, name: true, email: true } },
+  updatedBy:   { select: { id: true, name: true, email: true } },
+  sharedWith:  { select: { id: true, name: true, email: true } },
+  _count:      { select: { keys: true } },
+} as const;
+
 export const CREDENTIAL_SECTION_DETAIL_SELECT = {
   id:          true,
   name:        true,
@@ -31,6 +44,12 @@ export const CREDENTIAL_SECTION_DETAIL_SELECT = {
   owner:      { select: { id: true, name: true, email: true } },
   updatedBy:  { select: { id: true, name: true, email: true } },
   sharedWith: { select: { id: true, name: true, email: true } },
+  parent:     { select: { id: true, name: true } },
+  children:   {
+    where:   { status: { not: "DELETED" as const } },
+    orderBy: { createdAt: "asc" as const },
+    select:  SUBSECTION_SELECT,
+  },
   keys:       {
     orderBy: { createdAt: "asc" as const },
     select:  {
@@ -80,7 +99,8 @@ export async function listCredentialSections(
 ) {
   if (isActorContentBlocked(actor)) return [];
 
-  const statusWhere = { status };
+  // Only show root sections in the list; subsections are shown within their parent's detail page.
+  const statusWhere = { status, parentId: null };
 
   if (hasUnrestrictedProjectScope(actor.role)) {
     return prisma.credentialSection.findMany({

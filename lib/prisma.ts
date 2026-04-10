@@ -5,6 +5,9 @@ if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL environment variable is not set.");
 }
 
+/** Set `PRISMA_LOG_QUERIES=1` to print SQL to the terminal only. */
+const PRISMA_LOG_QUERIES = process.env.PRISMA_LOG_QUERIES === "1";
+
 /**
  * Bump this when you add/change Prisma models so `next dev` does not keep an
  * old PrismaClient instance missing new delegates (e.g. `projectMember`).
@@ -66,12 +69,19 @@ function trimStrings(data: unknown): unknown {
 function buildPrismaClient() {
   const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
 
+  // Dev: no query logs by default (Next 16 forwards server logs to DevTools). Optional: PRISMA_LOG_QUERIES=1 → stdout only.
   const base = new PrismaClient({
     adapter,
     log:
       process.env.NODE_ENV === "development"
-        ? ["query", "error", "warn"]
-        : ["error"],
+        ? [
+            ...(PRISMA_LOG_QUERIES
+              ? [{ level: "query" as const, emit: "stdout" as const }]
+              : []),
+            { level: "error", emit: "stdout" },
+            { level: "warn", emit: "stdout" },
+          ]
+        : [{ level: "error", emit: "stdout" }],
   });
 
   return base.$extends({

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter }               from "next/navigation";
 import { Role }                    from "@prisma/client";
 import { toast }                   from "sonner";
@@ -12,6 +12,17 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
+import { ScrollTableViewport } from "@/components/ui/scroll-table-viewport";
+import {
+  Search,
+  AlertTriangle,
+  Ban,
+  Lock,
+  UserPlus,
+  ShieldCheck,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel,
   AlertDialogContent, AlertDialogDescription,
@@ -19,6 +30,14 @@ import {
 } from "@/components/ui/alert-dialog";
 import { updateUserRole, deactivateUser, reactivateUser } from "@/app/actions/users";
 import UserProjectAssignmentsCell from "@/components/dashboard/UserProjectAssignmentsCell";
+
+const ROLE_BADGE_CLASS: Record<Role, string> = {
+  SUPERADMIN: "bg-red-500/10 text-red-600 border-red-500/20",
+  ADMIN:      "bg-blue-500/10 text-blue-600 border-blue-500/20",
+  MODERATOR:  "bg-indigo-500/10 text-indigo-600 border-indigo-500/20",
+  USER:       "bg-slate-500/10 text-slate-600 border-slate-500/20",
+  INTERN:     "bg-slate-100 text-slate-500 border-slate-200",
+};
 
 // ---------------------------------------------------------------------------
 // Types
@@ -62,6 +81,8 @@ const ROLE_BADGE: Record<Role, "default" | "secondary" | "outline" | "destructiv
 };
 
 const ALL_ROLES: Role[] = [Role.INTERN, Role.USER, Role.MODERATOR, Role.ADMIN, Role.SUPERADMIN];
+
+const USERS_PAGE_SIZE = 15;
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", {
@@ -124,7 +145,7 @@ function UserTableRow({
     startTransition(async () => {
       const result = await deactivateUser(user.id);
       if (result.success) {
-        toast.success(`"${user.name ?? user.email}" has been deactivated.`);
+        toast.success(`"${user.name ?? user.email}" is now inactive.`);
         router.refresh();
       } else {
         toast.error(result.error);
@@ -146,20 +167,24 @@ function UserTableRow({
 
   return (
     <TableRow className={`border-b border-white/5 transition-colors hover:bg-white/5 ${!user.isActive ? "opacity-50 grayscale-[0.5]" : isSelf ? "bg-blue-500/5 hover:bg-blue-500/10" : "hover:bg-white/10"}`}>
-      <TableCell className="px-8 py-5">
+      <TableCell className="px-4 sm:px-6 py-4">
         <div className="flex flex-col">
-          <p className="text-sm font-black text-[#0c1421] uppercase tracking-wide">{user.name ?? <span className="italic text-slate-400">Anonymous</span>}</p>
+          <p className="text-sm font-black text-[#0c1421] uppercase tracking-wide">
+            {user.name?.trim() ||
+              user.email?.split("@")[0] ||
+              <span className="italic text-slate-400">Anonymous</span>}
+          </p>
           <p className="text-[10px] font-bold text-slate-400 mt-0.5 tracking-tight">{user.email}</p>
         </div>
       </TableCell>
 
-      <TableCell className="px-8 py-5">
+      <TableCell className="px-4 sm:px-6 py-4">
         <div className={`inline-flex px-2.5 py-0.5 rounded-full border text-[10px] font-black uppercase tracking-widest ${ROLE_BADGE_CLASS[user.role]}`}>
           {user.role}
         </div>
       </TableCell>
 
-      <TableCell className="px-8 py-5">
+      <TableCell className="px-4 sm:px-6 py-4">
         {canToggleStatus && user.isActive ? (
           <AlertDialog>
             <AlertDialogTrigger
@@ -182,10 +207,10 @@ function UserTableRow({
                 
                 <div className="space-y-4">
                   <AlertDialogTitle className="text-xl font-black text-[#0c1421] uppercase tracking-wide">
-                    Identity Suspension
+                    Set account inactive
                   </AlertDialogTitle>
                   <AlertDialogDescription className="text-slate-500 font-medium text-[13px] leading-relaxed px-2">
-                    Revoke all vault permissions for <span className="text-[#0c1421] font-bold uppercase">{user.role}</span>? This will immediately freeze their workspace access.
+                    Revoke all vault permissions for <span className="text-[#0c1421] font-bold uppercase">{user.role}</span>? Their account will be marked <span className="font-semibold text-[#0c1421]">inactive</span> and workspace access will be removed until an administrator restores it.
                   </AlertDialogDescription>
                 </div>
 
@@ -195,7 +220,7 @@ function UserTableRow({
                     className="w-full h-14 bg-[#bd1e1e] hover:bg-[#a31a1a] text-white rounded-2xl font-black uppercase tracking-widest text-[11px] shadow-lg shadow-red-500/20 flex items-center justify-center gap-3 active:scale-[0.98] transition-all"
                   >
                     <Ban className="size-4" />
-                    Suspend
+                    Set inactive
                   </AlertDialogAction>
                   
                   <AlertDialogCancel className="w-full h-14 bg-slate-100 hover:bg-slate-200 border-0 text-[#0c1421] rounded-2xl font-black uppercase tracking-widest text-[11px] active:scale-[0.98] transition-all">
@@ -222,11 +247,11 @@ function UserTableRow({
         )}
       </TableCell>
 
-      <TableCell className="px-8 py-5 text-[10px] font-black text-slate-400 tracking-widest uppercase">
+      <TableCell className="px-4 sm:px-6 py-4 text-[10px] font-black text-slate-400 tracking-widest uppercase">
         {formatDate(user.createdAt)}
       </TableCell>
 
-      <TableCell className="px-8 py-5">
+      <TableCell className="px-4 sm:px-6 py-4">
         <UserProjectAssignmentsCell
           targetUser={{ id: user.id, name: user.name, email: user.email }}
           assignedProjects={user.assignedProjects}
@@ -234,7 +259,7 @@ function UserTableRow({
         />
       </TableCell>
 
-      <TableCell className="px-8 py-5 text-right">
+      <TableCell className="px-4 sm:px-6 py-4 text-right">
         {isSelf ? (
           <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest opacity-60">System User</span>
         ) : (
@@ -327,6 +352,7 @@ function UserTableRow({
 
 export default function UserManagement({ users, currentUserId, currentUserRole }: Props) {
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
 
   const filtered = users.filter((u) => {
     const q = search.toLowerCase();
@@ -337,9 +363,26 @@ export default function UserManagement({ users, currentUserId, currentUserRole }
     );
   });
 
+  const totalPages = Math.max(1, Math.ceil(filtered.length / USERS_PAGE_SIZE));
+
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
+
+  useEffect(() => {
+    setPage((p) => Math.min(p, totalPages));
+  }, [totalPages]);
+
+  const pageUsers = filtered.slice(
+    (page - 1) * USERS_PAGE_SIZE,
+    page * USERS_PAGE_SIZE,
+  );
+  const rangeStart = filtered.length === 0 ? 0 : (page - 1) * USERS_PAGE_SIZE + 1;
+  const rangeEnd = Math.min(page * USERS_PAGE_SIZE, filtered.length);
+
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-150 relative">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 px-2">
+    <div className="relative w-full min-w-0 max-w-full space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-150">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 px-1">
         <div className="relative w-full max-w-md group">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
           <input
@@ -359,17 +402,16 @@ export default function UserManagement({ users, currentUserId, currentUserRole }
         </div>
       </div>
 
-      <div className="max-h-[min(80vh,48rem)] overflow-auto rounded-[2rem] border border-white/40 bg-white/30 shadow-2xl backdrop-blur-md">
-        <div className="min-w-0 overflow-x-auto">
-          <Table>
+      <ScrollTableViewport>
+          <Table className="min-w-[56rem]">
             <TableHeader>
               <TableRow className="border-b border-white/10 hover:bg-transparent">
-                <TableHead className="h-14 px-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">User</TableHead>
-                <TableHead className="h-14 px-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Role</TableHead>
-                <TableHead className="h-14 px-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</TableHead>
-                <TableHead className="h-14 px-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Joined</TableHead>
-                <TableHead className="h-14 px-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Projects</TableHead>
-                <TableHead className="h-14 px-8 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Access</TableHead>
+                <TableHead className="h-14 px-4 sm:px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">User</TableHead>
+                <TableHead className="h-14 px-4 sm:px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Role</TableHead>
+                <TableHead className="h-14 px-4 sm:px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</TableHead>
+                <TableHead className="h-14 px-4 sm:px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Joined</TableHead>
+                <TableHead className="h-14 px-4 sm:px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Projects</TableHead>
+                <TableHead className="h-14 px-4 sm:px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Access</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -380,7 +422,7 @@ export default function UserManagement({ users, currentUserId, currentUserRole }
                   </TableCell>
                 </TableRow>
               ) : (
-                filtered.map((u) => (
+                pageUsers.map((u) => (
                   <UserTableRow
                     key={u.id}
                     user={u}
@@ -391,8 +433,40 @@ export default function UserManagement({ users, currentUserId, currentUserRole }
               )}
             </TableBody>
           </Table>
+      </ScrollTableViewport>
+
+      {filtered.length > 0 && totalPages > 1 && (
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 rounded-2xl border border-white/40 bg-white/30 backdrop-blur-md px-4 py-4 sm:px-6">
+          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest text-center sm:text-left tabular-nums">
+            Showing {rangeStart}–{rangeEnd} of {filtered.length}
+            <span className="text-slate-400"> · {USERS_PAGE_SIZE} per page</span>
+          </p>
+          <div className="flex items-center justify-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              className="font-black uppercase tracking-widest text-[9px] gap-1"
+            >
+              <ChevronLeft className="size-3.5" />
+              Previous
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              className="font-black uppercase tracking-widest text-[9px] gap-1"
+            >
+              Next
+              <ChevronRight className="size-3.5" />
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
 
       <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.3em] text-center">
         User Management  - Credential Vault 
@@ -400,12 +474,3 @@ export default function UserManagement({ users, currentUserId, currentUserRole }
     </div>
   );
 }
-import { Search, AlertTriangle, Ban, Lock, UserPlus, ShieldCheck } from "lucide-react";
-
-const ROLE_BADGE_CLASS: Record<Role, string> = {
-  SUPERADMIN: "bg-red-500/10 text-red-600 border-red-500/20",
-  ADMIN:      "bg-blue-500/10 text-blue-600 border-blue-500/20",
-  MODERATOR:  "bg-indigo-500/10 text-indigo-600 border-indigo-500/20",
-  USER:       "bg-slate-500/10 text-slate-600 border-slate-500/20",
-  INTERN:     "bg-slate-100 text-slate-500 border-slate-200",
-};

@@ -1,6 +1,6 @@
 import nodemailer from "nodemailer";
 
-const DEFAULT_FROM = "mitra.b.mukherjee@steorasystems.com";
+const DEFAULT_FROM = "developer@steorasystems.com";
 
 export function getAppBaseUrl(): string {
   const u = process.env.NEXTAUTH_URL ?? process.env.AUTH_URL ?? process.env.VERCEL_URL;

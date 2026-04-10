@@ -24,7 +24,7 @@ export default async function ApprovalsPage() {
       <div>
         <h1 className="text-3xl font-black tracking-tight text-[#0c1421] drop-shadow-sm uppercase">Approvals</h1>
         <p className="mt-2 text-base text-slate-500 font-medium tracking-tight">
-          Authorization layer for cryptographic assets and intelligence nodes. Review all submissions before integration.
+          Review and authorize vault changes submitted by your team.
         </p>
       </div>
 

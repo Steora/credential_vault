@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Trash2 } from "lucide-react";
+import { ChevronDown, Filter, Trash2 } from "lucide-react";
 import CopyAllSecretsButton from "@/components/CopyAllSecretsButton";
 import AddSecretDialog from "@/components/dashboard/AddSecretDialog";
 import RevealButton from "@/components/RevealButton";
@@ -11,6 +11,9 @@ import CopyButton from "@/components/CopyButton";
 import EditSecretDialog from "@/components/dashboard/EditSecretDialog";
 import DeleteSecretButton from "@/components/dashboard/DeleteSecretButton";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { deleteEnvironment } from "@/app/actions/secrets";
 import {
   AlertDialog,
@@ -23,13 +26,6 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 
 export type ProjectSecretRow = {
   id: string;
@@ -57,30 +53,40 @@ export default function ProjectSecretsWidget({
   const router = useRouter();
   const [isPending, startTransition] = useState(false);
   const [addedEnvs, setAddedEnvs] = useState<string[]>([]);
-  
-  const [dropdownDialogOpen, setDropdownDialogOpen] = useState(false);
-  const [dropdownEnv, setDropdownEnv] = useState("");
-  const [selectKey, setSelectKey] = useState(Date.now()); // Forces Select to reset
+
+  const [addEnvironmentOpen, setAddEnvironmentOpen] = useState(false);
+
+  /** Which environment sections are visible. */
+  const [envFilter, setEnvFilter] = useState<Record<string, boolean>>({});
 
   const allEnvs = useMemo(() => {
     const envsFromSecrets = secrets.map((s) => s.environment || "Default");
     return Array.from(new Set([...envsFromSecrets, ...addedEnvs]));
   }, [secrets, addedEnvs]);
 
-  const handleAddEnv = (val: string) => {
-    if (val === "custom") {
-      // Just open the dialog with an empty environment so they can type it in the popup
-      setDropdownEnv(""); 
-      setDropdownDialogOpen(true);
-    } else if (val) {
-      // Predefined env selected -> add it and open dialog
-      setAddedEnvs((prev) => Array.from(new Set([...prev, val])));
-      setDropdownEnv(val);
-      setDropdownDialogOpen(true);
-    }
-    
-    // Reset dropdown back to placeholder
-    setSelectKey(Date.now()); 
+  useEffect(() => {
+    setEnvFilter((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      for (const e of allEnvs) {
+        if (next[e] === undefined) {
+          next[e] = true;
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [allEnvs]);
+
+  const displayedEnvs = useMemo(
+    () => allEnvs.filter((e) => envFilter[e] !== false),
+    [allEnvs, envFilter],
+  );
+
+  const filterEnvKeys = useMemo(() => [...allEnvs].sort((a, b) => a.localeCompare(b)), [allEnvs]);
+
+  const setEnvVisible = (name: string, visible: boolean) => {
+    setEnvFilter((prev) => ({ ...prev, [name]: visible }));
   };
 
   const handleDeleteSection = (envName: string, hasSecrets: boolean) => {
@@ -106,67 +112,79 @@ export default function ProjectSecretsWidget({
   return (
     <section className="space-y-6">
       
-      {/* Hidden Dialog for the Dropdown trigger */}
+      {/* Opens from center “Add Environment” button */}
       {showAddSecret && (
         <AddSecretDialog
           projectId={project.id}
           projectName={project.name}
           allowBulkImport={canMutateVault || canUserRequestPendingSubmission}
-          defaultEnvironment={dropdownEnv}
-          open={dropdownDialogOpen}
-          onOpenChange={setDropdownDialogOpen}
+          defaultEnvironment=""
+          existingEnvironmentNames={allEnvs}
+          heading="newEnvironment"
+          open={addEnvironmentOpen}
+          onOpenChange={setAddEnvironmentOpen}
           hideTrigger={true}
         />
       )}
 
-      {/* 3-Column Grid to guarantee perfect centering */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-4">
-        
-        {/* LEFT: Title & Subtitle */}
-        <div className="justify-self-start">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
           <h2 className="text-lg font-semibold">Secrets</h2>
           <p className="text-xs text-muted-foreground">
             {secrets.length} encrypted secret{secrets.length !== 1 ? "s" : ""}
           </p>
         </div>
-        
-        {/* CENTER: Styled Environment Dropdown */}
-        <div className="justify-self-center">
-          {showAddSecret && (
-            <Select key={selectKey} onValueChange={handleAddEnv}>
-              <SelectTrigger className="h-9 w-[180px] bg-white/40 border-white/20 backdrop-blur-md rounded-lg text-[10px] font-black uppercase tracking-widest text-[#0c1421] focus:ring-blue-500/20 transition-all hover:bg-white/60 shadow-sm">
-                <SelectValue placeholder="Add Environment" />
-              </SelectTrigger>
-              {/* Added overflow-x-auto to make the dropdown list scrollable horizontally */}
-              <SelectContent align="center" className="bg-white/90 backdrop-blur-xl border-white/20 rounded-xl shadow-xl max-w-[90vw] overflow-x-auto">
-                <SelectItem value="Local" className="text-[10px] font-black uppercase tracking-widest text-[#0c1421]">
-                  Local
-                </SelectItem>
-                <SelectItem value="Development" className="text-[10px] font-black uppercase tracking-widest text-[#0c1421]">
-                  Development
-                </SelectItem>
-                <SelectItem value="Deployment" className="text-[10px] font-black uppercase tracking-widest text-[#0c1421]">
-                  Deployment
-                </SelectItem>
-                <SelectItem value="custom" className="text-[10px] font-black uppercase tracking-widest text-blue-600 focus:text-blue-700 focus:bg-blue-50/50">
-                  + Custom Env
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          )}
-        </div>
 
-        {/* RIGHT: Global Actions */}
-        <div className="justify-self-end flex items-center gap-2">
-          <CopyAllSecretsButton projectId={project.id} secretCount={secrets.length} />
-          
+        <div className="flex flex-wrap items-center justify-start gap-2 sm:justify-end">
+          {showAddSecret && allEnvs.length > 0 && (
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-9 gap-1.5 border-white/20 bg-white/40 text-[10px] font-black uppercase tracking-widest text-[#0c1421] shadow-sm backdrop-blur-md hover:bg-white/60"
+                >
+                  <Filter className="size-3.5 opacity-70" aria-hidden />
+                  Filter
+                  <ChevronDown className="size-3 opacity-60" aria-hidden />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="center" className="w-56 space-y-3 p-3">
+                <p className="text-xs font-medium text-muted-foreground">Show secrets for</p>
+                <div className="space-y-2.5">
+                  {filterEnvKeys.map((name) => (
+                    <div key={name} className="flex items-center gap-2.5">
+                      <Checkbox
+                        id={`env-filter-${name}`}
+                        checked={envFilter[name] !== false}
+                        onCheckedChange={(checked) =>
+                          setEnvVisible(name, checked === true)
+                        }
+                      />
+                      <Label
+                        htmlFor={`env-filter-${name}`}
+                        className="cursor-pointer text-sm font-normal leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                      >
+                        {name}
+                      </Label>
+                    </div>
+                  ))}
+                </div>
+              </PopoverContent>
+            </Popover>
+          )}
+
           {showAddSecret && (
-            <AddSecretDialog
-              projectId={project.id}
-              projectName={project.name}
-              allowBulkImport={canMutateVault || canUserRequestPendingSubmission}
-              defaultEnvironment="" 
-            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-9 border-white/20 bg-white/40 text-[10px] font-black uppercase tracking-widest text-[#0c1421] shadow-sm backdrop-blur-md hover:bg-white/60"
+              onClick={() => setAddEnvironmentOpen(true)}
+            >
+              Add Environment
+            </Button>
           )}
         </div>
       </div>
@@ -174,12 +192,22 @@ export default function ProjectSecretsWidget({
       {allEnvs.length === 0 ? (
         <div className="rounded-xl border border-dashed bg-muted/20 p-10 text-center">
           <p className="text-sm text-muted-foreground">
-            No secrets yet. {showAddSecret ? "Select an environment from the dropdown to start." : ""}
+            No secrets yet.{" "}
+            {showAddSecret
+              ? "Click Add Environment, name your section, then add secret keys and values."
+              : ""}
+          </p>
+        </div>
+      ) : displayedEnvs.length === 0 ? (
+        <div className="rounded-xl border border-dashed bg-muted/20 p-10 text-center">
+          <p className="text-sm text-muted-foreground">
+            No environments match the current filter. Open Filter and select at least one environment to
+            show.
           </p>
         </div>
       ) : (
         <div className="space-y-8">
-          {allEnvs.map((envName) => {
+          {displayedEnvs.map((envName) => {
             const envSecrets = secrets.filter((s) => (s.environment || "Default") === envName);
             const hasSecrets = envSecrets.length > 0;
 
@@ -191,20 +219,24 @@ export default function ProjectSecretsWidget({
                     {envName}
                   </h3>
                   <div className="flex items-center gap-2">
-                    <CopyAllSecretsButton 
-                      projectId={project.id} 
-                      secretCount={envSecrets.length} 
-                      environment={envName} 
-                    />
+                    {/* Create (keys) → Read (copy) → Delete (section) */}
                     {showAddSecret && (
                       <AddSecretDialog
                         projectId={project.id}
                         projectName={project.name}
                         allowBulkImport={canMutateVault || canUserRequestPendingSubmission}
                         defaultEnvironment={envName}
-                        triggerIconOnly={true}
+                        existingEnvironmentNames={allEnvs}
+                        heading="addKeys"
+                        lockEnvironment
+                        triggerIconOnly
                       />
                     )}
+                    <CopyAllSecretsButton 
+                      projectId={project.id} 
+                      secretCount={envSecrets.length} 
+                      environment={envName} 
+                    />
                     
                     {/* Delete Section Button & Dialog */}
                     {canMutateVault && (

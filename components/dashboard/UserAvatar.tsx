@@ -22,11 +22,18 @@ export default function UserAvatar({
 }: UserAvatarProps) {
   const initials = getUserInitials(name, email);
   const src = profilePhotoSrc(image);
+  const isRemote =
+    !!src &&
+    (src.startsWith("https://") || src.startsWith("http://"));
 
   return (
     <Avatar size={size} className={cn("bg-slate-800", className)}>
       {src ? (
-        <AvatarImage src={src} alt={name ?? email ?? "User"} />
+        <AvatarImage
+          src={src}
+          alt={name ?? email ?? "User"}
+          {...(isRemote ? { referrerPolicy: "no-referrer" as const } : {})}
+        />
       ) : null}
       <AvatarFallback
         className={cn(
