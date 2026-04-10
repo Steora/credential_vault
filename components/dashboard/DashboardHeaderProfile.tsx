@@ -23,7 +23,10 @@ export type HeaderProfileUser = {
 };
 
 export default function DashboardHeaderProfile({ user }: { user: HeaderProfileUser }) {
-  const displayName = user.name?.trim() || "User";
+  const displayName =
+    user.name?.trim() ||
+    user.email?.split("@")[0]?.trim() ||
+    "Account";
 
   return (
     <div className="flex items-center justify-end gap-4">

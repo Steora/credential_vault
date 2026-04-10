@@ -47,7 +47,10 @@ export default function ProjectGridWithSearch({
     <div className="space-y-10">
       <div className="flex flex-col gap-6 md:flex-row md:items-center justify-between px-2">
         <div className="relative w-full max-w-xl group">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 pointer-events-none" style={{ color: '#475569' }} />
+          <Search
+            className="pointer-events-none absolute left-3.5 top-1/2 z-10 size-4 -translate-y-1/2"
+            style={{ color: "#475569" }}
+          />
           <input
             id="project-search"
             type="text"

@@ -3,11 +3,13 @@ import { notFound } from "next/navigation";
 import { NoteType } from "@prisma/client";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import { auth } from "@/auth";
+import { canUserPerformAction } from "@/lib/permissions";
 import { getNoteById } from "@/lib/queries/notes";
 import { VAULT_ENTITY_STATUS } from "@/lib/vault-entity-status";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import CopyNoteButton from "@/components/CopyNoteButton";
+import DeleteNoteButton from "@/components/dashboard/DeleteNoteButton";
 import EditNoteDialog  from "@/components/dashboard/EditNoteDialog";
 
 function formatDate(d: Date) {
@@ -32,6 +34,8 @@ export default async function NoteDetailPage({
 
   const note = await getNoteById(id, actor);
   if (!note) notFound();
+
+  const canDeleteNote = canUserPerformAction(actor, null, "note", "delete");
 
   const isArchived = note.status === VAULT_ENTITY_STATUS.ARCHIVED;
 
@@ -158,6 +162,13 @@ export default async function NoteDetailPage({
               noteId={note.id}
               initialTitle={note.title}
               initialContent={note.content}
+            />
+          ) : null}
+          {canDeleteNote && note.type !== NoteType.NORMAL ? (
+            <DeleteNoteButton
+              noteId={note.id}
+              noteTitle={note.title}
+              afterDeleteHref={backHref}
             />
           ) : null}
           <CopyNoteButton title={note.title} content={note.content} />

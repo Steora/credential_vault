@@ -2,7 +2,10 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ActivityAction, Role } from "@prisma/client";
 import { auth } from "@/auth";
-import { getActivityLogs } from "@/lib/queries/activity";
+import { getActivityLogsPage } from "@/lib/queries/activity";
+import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button-variants";
+import { cn } from "@/lib/utils";
 import { 
   Plus, 
   RefreshCcw, 
@@ -13,9 +16,8 @@ import {
   LogOut, 
   Settings2,
   Clock,
-  User,
-  ShieldCheck,
-  ChevronRight
+  ChevronRight,
+  ChevronLeft,
 } from "lucide-react";
 const ELEVATED = new Set<Role>([Role.SUPERADMIN, Role.ADMIN, Role.MODERATOR]);
 
@@ -64,7 +66,17 @@ function verbPhrase(action: ActivityAction, entityType: string): string {
   }
 }
 
-export default async function ActivityPage() {
+function parseActivityPageParam(raw: string | undefined): number {
+  if (raw === undefined || raw === "") return 1;
+  const n = parseInt(raw.trim(), 10);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 1;
+}
+
+export default async function ActivityPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>;
+}) {
   const session = await auth();
   if (!session?.user) return null;
 
@@ -72,7 +84,17 @@ export default async function ActivityPage() {
     redirect("/dashboard/projects");
   }
 
-  const rows = await getActivityLogs();
+  const sp = await searchParams;
+  const requestedPage = parseActivityPageParam(sp.page);
+  const { rows, total, page, pageSize, totalPages } =
+    await getActivityLogsPage(requestedPage);
+
+  if (total > 0 && requestedPage !== page) {
+    redirect(`/dashboard/activity?page=${page}`);
+  }
+
+  const rangeStart = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const rangeEnd = Math.min(page * pageSize, total);
 
   return (
     <div className="space-y-10 pb-20 max-w-5xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -83,9 +105,18 @@ export default async function ActivityPage() {
             Real-time update of all vault operations.
           </p>
         </div>
-        <div className="flex items-center gap-2 px-3 py-1.5 bg-white/40 backdrop-blur-md rounded-full border border-white/40 shadow-sm pointer-events-auto">
-          <div className="size-1.5 bg-blue-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
-          <span className="text-[9px] font-black tracking-widest text-[#0c1421] uppercase">Monitoring Active</span>
+        <div className="flex flex-wrap items-center gap-3 justify-end pointer-events-auto">
+          {total > 0 && (
+            <div className="px-3 py-1.5 bg-white/40 backdrop-blur-md rounded-full border border-white/40 shadow-sm">
+              <span className="text-[9px] font-black tracking-widest text-[#0c1421] uppercase tabular-nums">
+                Page {page} / {totalPages}
+              </span>
+            </div>
+          )}
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-white/40 backdrop-blur-md rounded-full border border-white/40 shadow-sm">
+            <div className="size-1.5 bg-blue-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
+            <span className="text-[9px] font-black tracking-widest text-[#0c1421] uppercase">Monitoring Active</span>
+          </div>
         </div>
       </div>
 
@@ -107,7 +138,7 @@ export default async function ActivityPage() {
             return (
               <div 
                 key={row.id} 
-                className="group relative flex flex-col md:flex-row md:items-center gap-5 bg-white/40 backdrop-blur-md border border-white/40 p-5 rounded-2xl shadow-sm transition-all hover:bg-white/60 hover:shadow-xl animate-in fade-in slide-in-from-bottom-2 duration-500"
+                className="group relative flex flex-col md:flex-row md:items-center gap-5 overflow-hidden bg-white/40 backdrop-blur-md border border-white/40 p-5 rounded-2xl shadow-sm transition-all hover:bg-white/60 hover:shadow-xl animate-in fade-in slide-in-from-bottom-2 duration-500"
               >
                 <div className="flex shrink-0 items-center justify-center size-12 rounded-xl bg-[#0c1421] text-white shadow-lg relative overflow-hidden group-hover:scale-110 transition-transform">
                   <ActionIcon action={row.action} />
@@ -158,6 +189,50 @@ export default async function ActivityPage() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {total > 0 && totalPages > 1 && (
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 rounded-2xl border border-white/40 bg-white/30 backdrop-blur-md px-4 py-4 sm:px-6">
+          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest text-center sm:text-left tabular-nums">
+            Showing {rangeStart}–{rangeEnd} of {total}
+          </p>
+          <div className="flex items-center justify-center gap-2">
+            {page <= 1 ? (
+              <Button type="button" variant="outline" size="sm" disabled className="font-black uppercase tracking-widest text-[9px] gap-1">
+                <ChevronLeft className="size-3.5" />
+                Previous
+              </Button>
+            ) : (
+              <Link
+                href={`/dashboard/activity?page=${page - 1}`}
+                className={cn(
+                  buttonVariants({ variant: "outline", size: "sm" }),
+                  "font-black uppercase tracking-widest text-[9px] gap-1 inline-flex",
+                )}
+              >
+                <ChevronLeft className="size-3.5" />
+                Previous
+              </Link>
+            )}
+            {page >= totalPages ? (
+              <Button type="button" variant="outline" size="sm" disabled className="font-black uppercase tracking-widest text-[9px] gap-1">
+                Next
+                <ChevronRight className="size-3.5" />
+              </Button>
+            ) : (
+              <Link
+                href={`/dashboard/activity?page=${page + 1}`}
+                className={cn(
+                  buttonVariants({ variant: "outline", size: "sm" }),
+                  "font-black uppercase tracking-widest text-[9px] gap-1 inline-flex",
+                )}
+              >
+                Next
+                <ChevronRight className="size-3.5" />
+              </Link>
+            )}
+          </div>
         </div>
       )}
 

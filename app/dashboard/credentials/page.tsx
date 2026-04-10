@@ -58,7 +58,7 @@ export default async function CredentialsPage({
   const pageTitle = isArchivedPortal ? "Archived credentials" : "Credentials";
   const pageDescription = isArchivedPortal
     ? "Sections marked archived. Open the main Credentials list for active work."
-    : "Group key-value credentials into sections. Open a section to add keys. Interns are read-only.";
+    : "Group and manage secure logins for your team.";
 
   return (
     <div className="space-y-10 pb-20 max-w-7xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700">

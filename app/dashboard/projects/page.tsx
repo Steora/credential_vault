@@ -73,7 +73,7 @@ export default async function ProjectsPage({
   const pageTitle = status === VAULT_ENTITY_STATUS.ARCHIVED ? "Archived projects" : "Projects";
   const pageDescription =
     status === VAULT_ENTITY_STATUS.ACTIVE
-      ? "Manage environment secrets and notes per project."
+      ? "Manage environment variables and secure notes for each of your projects."
       : "Projects marked archived. Open the main Projects list for active work.";
 
   const byId = new Map(projects.map((p) => [p.id, p]));

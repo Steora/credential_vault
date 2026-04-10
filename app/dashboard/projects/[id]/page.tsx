@@ -25,6 +25,7 @@ import ReactMarkdown         from "react-markdown";
 import AddNoteDialog         from "@/components/dashboard/AddNoteDialog";
 import EditNoteDialog        from "@/components/dashboard/EditNoteDialog";
 import ArchiveNoteButton     from "@/components/dashboard/ArchiveNoteButton";
+import DeleteNoteButton      from "@/components/dashboard/DeleteNoteButton";
 import CreateSubprojectDialog from "@/components/dashboard/CreateSubprojectDialog";
 import LeaveProjectButton    from "@/components/dashboard/LeaveProjectButton";
 import EditProjectDialog     from "@/components/dashboard/EditProjectDialog";
@@ -390,6 +391,9 @@ export default async function ProjectDetailPage({
                     )}
                     {canMutateVault && (
                       <ArchiveNoteButton noteId={note.id} noteTitle={note.title} />
+                    )}
+                    {canMutateVault && (
+                      <DeleteNoteButton noteId={note.id} noteTitle={note.title} />
                     )}
                   </div>
                 </div>

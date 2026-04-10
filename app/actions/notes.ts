@@ -469,3 +469,67 @@ export async function unarchiveNote(noteId: string): Promise<ArchiveNoteResult> 
 
   return { success: true };
 }
+
+// ---------------------------------------------------------------------------
+// Permanently delete note
+// ---------------------------------------------------------------------------
+
+/**
+ * Permanently removes a note (active or archived). Same RBAC and project scope
+ * as {@link archiveNote}: Moderator+ with `note` delete permission; project-linked
+ * notes require moderator assignment to that project (admins bypass).
+ */
+export async function deleteNote(noteId: string): Promise<ArchiveNoteResult> {
+  const session = await auth();
+  const vault = assertActiveVaultSession(session);
+  if (!vault.ok) return { success: false, error: vault.error };
+
+  const actor = { id: vault.user.id, role: vault.user.role };
+  if (!canUserPerformAction(actor, null, "note", "delete")) {
+    return {
+      success: false,
+      error: `Role "${vault.user.role}" is not permitted to delete notes.`,
+    };
+  }
+
+  const trimmedId = noteId?.trim();
+  if (!trimmedId) return { success: false, error: "Note not found." };
+
+  const note = await prisma.note.findFirst({
+    where: {
+      id: trimmedId,
+      status: { in: [VAULT_ENTITY_STATUS.ACTIVE, VAULT_ENTITY_STATUS.ARCHIVED] },
+    },
+    select: { id: true, title: true, type: true, projectId: true },
+  });
+  if (!note) return { success: false, error: "Note not found." };
+
+  if (note.type === NoteType.NORMAL) {
+    return {
+      success: false,
+      error: "General notes cannot be permanently deleted.",
+    };
+  }
+
+  if (note.type === NoteType.PROJECT_BASED && note.projectId) {
+    const scope = await assertModeratorAssignedToProject(actor, note.projectId);
+    if (!scope.ok) return { success: false, error: scope.error };
+  }
+
+  await prisma.note.delete({ where: { id: note.id } });
+
+  await logActivity({
+    actorId:    vault.user.id,
+    action:     ActivityAction.DELETE,
+    entityType: "note",
+    entityId:   note.id,
+    label:      note.title,
+  });
+
+  eventBus.emit("vault_event", {
+    type: "NOTE_DELETED",
+    ...(note.projectId ? { projectId: note.projectId } : {}),
+  });
+
+  return { success: true };
+}

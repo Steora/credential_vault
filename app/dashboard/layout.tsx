@@ -43,7 +43,7 @@ export default async function DashboardLayout({
   return (
     <SidebarProvider>
       <AppSidebar user={user} />
-      <SidebarInset className="relative bg-transparent overflow-hidden">
+      <SidebarInset className="relative min-w-0 bg-transparent">
         <LiquidBackground />
         
         {/* Glassmorphism Overlay */}
@@ -58,7 +58,7 @@ export default async function DashboardLayout({
           <DashboardHeaderProfile user={user} />
         </header>
 
-        <main className="min-w-0 flex-1 overflow-auto p-12 pt-8">
+        <main className="min-w-0 w-full max-w-full flex-1 overflow-x-hidden overflow-y-auto p-4 pt-4 sm:p-6 sm:pt-6 lg:p-12 lg:pt-8">
           <SSEProvider>
             {children}
           </SSEProvider>

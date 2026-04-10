@@ -50,13 +50,8 @@ export default function AddCredentialSectionDialog({ parentId }: Props) {
       if (result.success) {
         setOpen(false);
         reset();
-        if (isSubsection) {
-          // Stay on the parent page — just refresh to show the new subsection.
-          router.refresh();
-        } else {
-          // Navigate directly into the new root section.
-          router.push(`/dashboard/credentials/${result.id}`);
-        }
+        // Same as root sections: open the new section’s page so the user can add keys immediately.
+        router.push(`/dashboard/credentials/${result.id}`);
       } else {
         setError(result.error);
       }
