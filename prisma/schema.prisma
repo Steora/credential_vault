@@ -1,13 +1,11 @@
-// 1. Generator remains the same
 generator client {
   provider = "prisma-client-js"
 }
 
-// 2. Data Source: We REMOVE the 'url' line here per Prisma 7 rules
+// Connection URLs live in prisma.config.ts (Prisma 7+). Only the provider stays here.
 datasource db {
   provider = "postgresql"
 }
-
 // 3. The Role Hierarchy
 enum Role {
   SUPERADMIN
